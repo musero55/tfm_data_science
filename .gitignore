@@ -1,0 +1,16 @@
+
+# GITIGNORE PARA PROYECTO PISA
+
+#Carpetas
+data/
+manuals/
+
+#Formatos 
+*.xlsx
+*.csv
+*.sav
+*.txt
+
+# Archivos de configuración del sistema o del editor
+.DS_Store
+.vscode/
