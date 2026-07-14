@@ -1,15 +1,18 @@
 
 # GITIGNORE PARA PROYECTO PISA
 
-#Carpetas
-data/
+#Carpetas 
 manuals/
+data/raw/
+
+#Datos temporales
+.ipynb_checkpoints/
+__pycache__/
+
 
 #Formatos 
 *.xlsx
-*.csv
 *.sav
-*.txt
 
 # Archivos de configuración del sistema o del editor
 .DS_Store
