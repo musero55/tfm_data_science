@@ -92,3 +92,35 @@ Cualquier tabla intermedia que se exporte en formato Parquet debe seguir este pa
     *   Al hacer esto, **se borrarán todos los textos, tablas e imágenes generadas**.  Los gráficos se guardan internamente como bloques de texto gigantescos  que hacen que el archivo `.ipynb` pesen muchisimo y que Git se vuelva loco provocando conflictos imposibles de solucionar al hacer los *merges*.
 
     *   *Salvar los gráficos en memoria* El proyecto es reproducible, así que cualquiera puede volver a correr el notebook para verlos de nuevo. Para los gráficos finales, se incluirá código en el notebook para exportarlos directamente como archivos de imagen (`.png`, `.svg` o `.html` para Plotly) en una carpeta local dedicada, evitando así guardarlos dentro del propio cuaderno.
+ 
+   ---
+
+## 🗺️ Vista Gráfica de la Estructura
+
+Para que no haya pérdidas, la estructura final del repositorio debe verse reflejada exactamente así en el explorador de archivos:
+
+```text
+tfm-pisa/
+├── data/
+│   ├── raw/                  # Datos originales .SAS7BDAT (excluidos en Git)
+│   ├── intermediate/         # Tablas y variables intermedias .parquet
+│   └── processed/            # Matrices maestras listas para modelar
+├── notebooks/
+│   ├── fase_1_data_ingestion_eda/
+│   │   ├── 1.0_comprension_codebook.ipynb
+│   │   └── 1.1_eda_y_limpieza_lectura.ipynb
+│   ├── fase_2_feature_engineering_unification/
+│   │   ├── 2.1_construccion_indices_contexto.ipynb
+│   │   └── 2.2_unificacion_matriz_maestra_pisa.ipynb
+│   ├── fase_3_advanced_analytics_modeling/
+│   │   └──3.1_clustering_jerarquico_rendimiento.ipynb
+│   └── fase_4_insights_storytelling/
+│       ├── 4.1_generacion_graficos_memoria.ipynb
+│       └── 4.2_tablas_anexos_tfm.ipynb
+├── reports/
+│   └── figures/              # Exportaciones de imágenes (.png, .html...)
+├── src/
+│   └── __init__.py           # Permite importar las funciones comunes
+└── requirements.txt          # Dependencias (pandas 3.x, numpy 2.5+, etc.)
+```
+
