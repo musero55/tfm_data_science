@@ -1,7 +1,7 @@
 
 # GITIGNORE PARA PROYECTO PISA
 
-#Carpetas 
+# Datos y manuales (Se comparten por Drive/OneDrive, NO por GitHub)
 manuals/
 data/raw/
 
@@ -13,7 +13,16 @@ __pycache__/
 #Formatos 
 *.xlsx
 *.sav
+*.parquet
+*.json
 
 # Archivos de configuración del sistema o del editor
 .DS_Store
 .vscode/
+Thumbs.db
+
+# Entornos virtuales
+.venv/
+env/
+venv/
+ENV/
