@@ -13,7 +13,6 @@ __pycache__/
 #Formatos 
 *.xlsx
 *.sav
-*.parquet
 *.json
 
 # Archivos de configuración del sistema o del editor
