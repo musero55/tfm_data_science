@@ -18,6 +18,7 @@ El enfoque es **Data-Driven Policy Making**. No solo analizamos datos, diseñamo
     * **ML:** Análisis de correlación/causalidad entre horas de pantalla y rendimiento.
     * **XAI:** Identificar el "punto de retorno decreciente" (donde más tecnología ya no implica mejor aprendizaje).
 
+
 ## 3. Rama Económica (Estrategia de Optimización de Recursos)
 * **Enfoque de Negocio:** ROI educativo. Identificar dónde invertir recursos para maximizar el rendimiento, buscando maximizar el número de alumnos resilientes.
 * **Ciclo de Data Science:**
