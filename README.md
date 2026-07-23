@@ -45,22 +45,22 @@ Aquí se hace la carga del archivo masivo de PISA, el tratamiento de valores nul
 *   `1.2_eda_y_limpieza_matematicas.ipynb`
 *   `1.3_eda_y_limpieza_ciencias.ipynb`
 
-### 📂 `fase_2_feature_engineering_unification/`
+### 📂 `fase_2_feature_engineering/`
 *(Ingeniería de Características y Consolidación)*
 Fase pensada para crear los nuevos índices contextuales y hacer el *merge* de las tablas procesadas de la Fase 1 en un único dataset maestro.
 *   `2.1_construccion_indices_contexto.ipynb`
 *   `2.2_unificacion_matriz_maestra_pisa.ipynb`
 
-### 📂 `fase_3_advanced_analytics_modeling/`
+### 📂 `fase_3_modelado/`
 *(Modelado Predictivo y Analítica Avanzada)*
 Experimentaciones. Aquí se aplican algoritmos de Machine Learning y estadística trabajando sobre el dataset generado en la Fase 2. Cada integrante gestiona su propio estudio de forma independiente.
 *   `3.1_clustering_jerarquico_rendimiento.ipynb`
 *   `3.2_importancia_variables_random_forest.ipynb`
 *   `3.3_clustering_socioeconomico_contexto.ipynb`
 
-### 📂 `fase_4_insights_storytelling/`
+### 📂 `fase_4_estudio_resultados/`
 *(Visualización, Conclusiones y Reporte)*
-Fase final orientada a sacar los gráficos conclusivos bien pulidos (con Plotly) y las tablas finales que irán directas a la memoria escrita del TFM.
+Fase final orientada a sacar los gráficos conclusivos bien pulidos  y las tablas finales que irán directas a la memoria escrita del TFM.
 *   `4.1_generacion_graficos_memoria.ipynb`
 *   `4.2_tablas_anexos_tfm.ipynb`
 
@@ -73,7 +73,7 @@ Se utilizará una numeración secuencial según la fase en la que se esté, segu
 *   *Ejemplo:* `2.2_unificacion_matriz_maestra_pisa.ipynb`
 
 ### 2. Archivos de Datos Intermedios (`data/intermediate/`)
-Cualquier tabla intermedia que se exporte en formato Parquet debe seguir este patrón: `pisa_[competencia_o_estudio]_consolidado.parquet`.
+Cualquier tabla intermedia que se exporte en formato Parquet debe seguir este patrón: `pisa22_[competencia_o_estudio]_consolidado.parquet`.
 *   *Ejemplo:* `pisa_lectura_consolidado.parquet`
 
 ### 3. Nombres de Variables y Columnas en Pandas
