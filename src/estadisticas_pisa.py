@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 
 def puntuaciones_pisa_pais(df, competencia, col_pais='CNT', col_peso='W_FSTUWT'):
     """
