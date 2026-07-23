@@ -1,6 +1,6 @@
 import pandas as pd
 
-def consolidar_puntuaciones_pisa(df, competencia, col_pais='CNT', col_peso='W_FSTUWT'):
+def puntuaciones_pisa_pais(df, competencia, col_pais='CNT', col_peso='W_FSTUWT'):
     """
     Calcula las medias ponderadas de los 10 Valores Plausibles (PV) por país,
     la puntuación media final y el error de imputación (varianza).
@@ -11,40 +11,30 @@ def consolidar_puntuaciones_pisa(df, competencia, col_pais='CNT', col_peso='W_FS
     """
     medias_pv = []
     
-    # Calculamos las 10 medias ponderadas por pais
+    # Calculamos una media ponderada por cada valor de PV presente
     for i in range(1, 11):
         col_actual = f'PV{i}{competencia}'
-        
+
+        #Se crean 10 series de Pandas con indice del pais y valor la media ponderada de PV(i)
         media_ponderada = df.groupby(col_pais).apply(
             lambda x: (x[col_actual] * x[col_peso]).sum() / x[col_peso].sum(),
             include_groups=False
         )
+
+        #Se registra cada Series en un array
         medias_pv.append(media_ponderada)
     
-    # Registramos las 10 medias calculadas en un dataFrame
-    df_pv_consolidado = pd.concat(medias_pv, axis=1)
-    
-    # Nombrar las columnas individuales de los PVs para la tabla final
-    df_pv_consolidado.columns = [f'pv{i}_{competencia.lower()}' for i in range(1, 11)]
+    # Se genera un dataframe unico cuyo indice son los CNT y las columnas son las medias ponderadas PV
+    df_pv_consolidado = pd.concat(medias_pv, axis=1,)
     
     # Calcular métricas finales aggregadas
     puntuacion_final = df_pv_consolidado.mean(axis='columns')   #Media del conjunto PV
     error_imputacion = df_pv_consolidado.var(axis='columns')    #Varianza de las medias
     
-    # Construir la matriz limpia final
+    # Se construye el dataframe final con la media PV y error de imputacion por pais
     df_resultados = pd.DataFrame({
-        'media_pisa': puntuacion_final,
+        f'media_{competencia.lower()}_pisa': puntuacion_final,
         'varianza_imputacion': error_imputacion
     })
     
-    # Unir los PVs individuales con las medias y resetear el índice del país
-    df_final = pd.concat([df_resultados, df_pv_consolidado], axis=1).reset_index()
-    
-    # Estandarizar nombres de columnas según vuestro estándar snake_case
-    df_final = df_final.rename(columns={
-        col_pais: 'codigo_pais',
-        'media_pisa': f'media_{competencia.lower()}_pisa',
-        'varianza_imputacion': f'varianza_imputacion_{competencia.lower()}'
-    })
-    
-    return df_final
+    return df_resultados.reset_index()
