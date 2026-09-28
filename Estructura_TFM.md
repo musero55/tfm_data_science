@@ -1,56 +1,63 @@
-# 🚀 Propuesta de Valor al Ministerio: "Hacia un Modelo de Gestión Educativa Basado en Evidencia"
-
-El enfoque es **Data-Driven Policy Making**. No solo analizamos datos, diseñamos herramientas para medir el impacto de las políticas educativas existentes y detectar focos de intervención temprana.
-
-## 1. Rama Social (Estrategia de Bienestar y Cohesión)
-* **Enfoque de Negocio:** Optimización de programas de apoyo emocional y prevención del acoso para asegurar la equidad en el clima escolar.
-* **Ciclo de Data Science:**
-    * **Data Prep:** Integración de encuestas de bienestar.
-    * **Clustering:** Segmentación por vulnerabilidad psico-social.
-    * **ML:** Clasificación de alumnos en riesgo de abandono por factores sociales.
-    * **XAI:** Interpretación de los factores que más influyen en el "sentido de pertenencia".
-
-## 2. Rama Tecnológica (Estrategia de Transformación Digital)
-* **Enfoque de Negocio:** Evaluar la eficiencia de la inversión en TIC. ¿Estamos cerrando brechas o aumentando las distracciones?
-* **Ciclo de Data Science:**
-    * **Data Prep:** Estandarización de variables de uso de dispositivos y conectividad.
-    * **Clustering:** Identificación de perfiles de usuario digital (activo, pasivo, de riesgo).
-    * **ML:** Análisis de correlación/causalidad entre horas de pantalla y rendimiento.
-    * **XAI:** Identificar el "punto de retorno decreciente" (donde más tecnología ya no implica mejor aprendizaje).
 
 
-## 3. Rama Económica (Estrategia de Optimización de Recursos)
-* **Enfoque de Negocio:** ROI educativo. Identificar dónde invertir recursos para maximizar el rendimiento, buscando maximizar el número de alumnos resilientes.
-* **Ciclo de Data Science:**
-    * **Data Prep:** Normalización del índice ESCS.
-    * **Clustering:** Clasificación de centros según perfil socioeconómico del alumnado.
-    * **ML:** Modelos predictivos de resiliencia (¿qué variables convierten un entorno de bajos recursos en un centro de alto rendimiento?).
-    * **XAI:** Análisis de impacto del nivel educativo parental vs. recursos del centro.
+**Enfoque Central:** A través del análisis de los datos del informe, buscamos entender qué factores (económicos, académicos y sociales) determinan realmente el éxito educativo. Pasamos de las suposiciones a la validación de hipótesis concretas para guiar la toma de decisiones.
 
-## 4. Rama Educativa (Estrategia de Gestión de la Calidad)
-* **Enfoque de Negocio:** Mejora del sistema escolar. Medir la eficacia del tipo de centro y la gestión del absentismo para reducir tasas de repetición.
-* **Ciclo de Data Science:**
-    * **Data Prep:** Limpieza de indicadores institucionales.
-    * **Clustering:** Agrupación de centros por "perfil de eficiencia" (no solo notas, sino tasa de éxito vs. recursos).
-    * **ML:** Modelado de riesgo institucional (¿qué centros tienen mayor probabilidad de fracaso escolar?).
-    * **XAI:** Identificar qué medidas administrativas (p. ej. clases de refuerzo, ratios) reducen más el riesgo.
+## 1. Fase 1: Puesta en Contexto (El Panorama General)
+* **Objetivo:** Establecer la línea base y la fotografía actual del panorama educativo global para dar sentido al resto de los análisis.
+* **Enfoque de Negocio:** Proporcionar al Ministerio una visión clara de dónde se sitúa España frente al resto del mundo antes de profundizar en variables específicas.
+* **Plan de Trabajo y Seguimiento:**
+  - [ ] **EDA (Análisis Exploratorio):** Análisis descriptivo general de las puntuaciones principales.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **Visualización:** Creación de un dashboard o gráficos resumen de situación general.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+
+## 2. Fase 2: Inversión vs. Rendimiento (Análisis Económico)
+* **Hipótesis de trabajo:** *"Una mayor inversión por alumno no se traduce linealmente en mejores resultados matemáticos; existe un umbral de eficiencia y queremos ver cómo se posiciona España en su evolución histórica."*
+* **Enfoque de Negocio:** Evaluar la eficiencia del gasto público educativo.
+* **Plan de Trabajo y Seguimiento:**
+  - [ ] **Data Prep:** Búsqueda y cruce de datos históricos de inversión por alumno (este año y anteriores).
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **Análisis Comparativo:** Evolución de la inversión de España vs. media internacional.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **ML (Árbol de Regresión):** Modelado para medir cuánto influye realmente la inversión económica en los resultados de Matemáticas.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+
+## 3. Fase 3: Eficiencia del Estudio (El Impacto de los Deberes)
+* **Hipótesis de trabajo:** *"Mandar más horas de deberes a nivel global no garantiza mejores resultados en matemáticas, pudiendo existir una saturación que no aporta valor al aprendizaje."*
+* **Enfoque de Negocio:** Orientar las políticas sobre la carga lectiva fuera del horario escolar.
+* **Plan de Trabajo y Seguimiento:**
+  - [ ] **Clustering / Agrupación:** Clasificar a los países según el volumen (alto, medio, bajo) de horas dedicadas a deberes.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **EDA:** Comparativa global de horas de deberes vs. puntuación media en PISA.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **ML (Regresión):** Análisis predictivo para ver el peso real de la variable "número de deberes" sobre la nota de Matemáticas.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+
+## 4. Fase 4: Bienestar y Entorno Social (Análisis Regional en España)
+* **Hipótesis de trabajo:** *"El rendimiento académico está fuertemente condicionado por factores psicosociales (bullying, sentido de pertenencia), y su impacto varía significativamente dependiendo de la Comunidad Autónoma."*
+* **Enfoque de Negocio:** Focalizar las políticas de bienestar emocional y cohesión social de forma territorializada.
+* **Plan de Trabajo y Seguimiento:**
+  - [ ] **Data Prep:** Filtrar datos exclusivos de España y segmentar por Comunidad Autónoma.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **EDA Regional:** Comparativa de los índices de bullying, factores psicológicos y sentido de pertenencia al centro.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
+  - [ ] **Análisis de Impacto:** Identificar qué factor social penaliza más el rendimiento en cada Comunidad Autónoma.
+    * 📌 Estado: ⬜ Pendiente / ⏳ En proceso / ✅ Hecho
 
 ---
 
-## 📈 Resumen para el equipo (Discord)
+## 📈 Resumen para el equipo (Discord / Tablón de Anuncios)
 
-### Actualización TFM: Enfoque Ministerio (Business & Data Strategy)
+### royecto Capstone PISA
+hilo conductor:
 
-Compañeros, para que la presentación ante el Ministerio sea ganadora, vamos a enfocar el TFM como un **Plan de Transformación Educativa basado en Evidencia**.
+**Los 4 Bloques de Trabajo:**
+1. 🌍 **Contexto General:** ¿Dónde estamos parados a nivel global?
+2. 💰 **Inversión Económica:** ¿Gastamos bien en España? (Comparativa histórica + Árbol de Regresión sobre resultados de Mates).
+3. 📚 **Carga de Deberes:** ¿Más horas en casa = más nota en Mates? (Agrupación de países + Regresión).
+4. 🫂 **Factores Sociales en España:** ¿Cómo afectan el bullying y la salud mental según la Comunidad Autónoma?
 
-**Cada rama ahora es un "Vertical de Gestión":**
-* **Social:** Cohesión y Bienestar.
-* **Tecnológica:** Digitalización Eficiente.
-* **Económica:** Inversión y Resiliencia.
-* **Educativa:** Calidad e Institucionalidad.
-
-**Ciclo de trabajo por rama:**
-1.  **EDA:** Diagnóstico de la situación actual (KPIs).
-2.  **Clustering:** Segmentación para políticas personalizadas.
-3.  **ML (Clasificación/Regresión):** Predicción de riesgos y éxito.
-4.  **XAI (SHAP):** Explicabilidad necesaria para justificar ante el Ministerio por qué se propone X o Y medida.
+👉 **Por favor, revisad el documento principal y cambiad los estados de los checkboxes según vayáis avanzando:**
+* `⬜ Pendiente` -> Aún no se ha tocado.
+* `⏳ En proceso` -> Estoy trabajando en el código/análisis.
+* `✅ Hecho` -> Subido y validado.
