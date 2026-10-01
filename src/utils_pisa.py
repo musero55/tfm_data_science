@@ -44,6 +44,34 @@ def puntuaciones_pisa_pais(df, competencia, col_pais='CNT', col_peso='W_FSTUWT')
     
     return df_resultados.reset_index()
 
+def puntuaciones_pisa_alumnos(df, competencia):
+    """
+    Calcula la media individual de los 10 Valores Plausibles (PV) por alumno
+    y conserva los identificadores para cruces posteriores.
+    
+    Argumentos:
+        df (pd.DataFrame): Dataset 
+        competencia (str): Sufijo de la competencia (ej. 'READ', 'MATH', 'SCIE').
+    """
+    
+    # Columnas a conservar
+    cols_identificacion = ['CNT', 'CNTSCHID', 'CNTSTUID']
+    
+    # Generamos los nombres de las 10 columnas PV (PV1MATH, PV2MATH...)
+    cols_pv = [f'PV{i}{competencia}' for i in range(1, 11)]
+    
+    # Creamos un dataframe con los IDs, pesos y los 10 PVs
+    df_resultados = df[cols_identificacion + cols_pv].copy()
+    
+    # Calculamos la media de los 10 PVs para cada alumno (un valor por 'alumno')
+    df_resultados[f'media_{competencia.lower()}_pisa'] = df_resultados[cols_pv].mean(axis='columns') 
+    
+    # Limpiamos los 10 PV sueltos
+    columnas_finales = cols_identificacion + [f'media_{competencia.lower()}_pisa']
+    
+    # Devolvemos el dataframe
+    return df_resultados[columnas_finales]
+
 def guardar_pickle(ruta_archivo: str, *objetos: Any) -> None:
     """
     Guarda uno o múltiples objetos de Python en un único archivo binario (.pkl).
