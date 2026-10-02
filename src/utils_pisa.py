@@ -82,7 +82,7 @@ def puntuaciones_pisa_estratos(df, competencia,col_peso='W_FSTUWT'):
         competencia (str): Sufijo de la competencia (ej. 'READ', 'MATH', 'SCIE').
     """
     
-    # Columnas que conservamos 
+    # Columnas que conservamos
     cols_identificacion = ['CNT', 'STRATUM', col_peso]
     
     # Generamos los nombres de las 10 columnas PV (PV1MATH, PV2MATH...)
@@ -97,7 +97,7 @@ def puntuaciones_pisa_estratos(df, competencia,col_peso='W_FSTUWT'):
     # Ponderamos la nota del alumno por su peso
     df_temp['nota_ponderada'] = df_temp['media_alumno'] * df_temp[col_peso]
     
-    #  Agrupamos a nivel de País y Estrato sumando notas ponderadas y pesos
+    # Agrupamos por país y estrato sumando notas ponderadas y pesos
     df_estratos = df_temp.groupby(['CNT', 'STRATUM']).agg(
         suma_notas=('nota_ponderada', 'sum'),
         suma_pesos=(col_peso, 'sum')
