@@ -4,6 +4,8 @@
 # Datos y manuales (Se comparten por Drive/OneDrive, NO por GitHub)
 manuals/
 data/raw/
+data/intermediate/datos_anuales/
+data/intermediate/datos_anuales_imputados/
 
 #Datos temporales
 .ipynb_checkpoints/
