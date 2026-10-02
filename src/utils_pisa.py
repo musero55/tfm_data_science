@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import re
 from typing import Any
 import pickle
 import os
@@ -72,45 +73,33 @@ def puntuaciones_pisa_alumnos(df, competencia):
     # Devolvemos el dataframe
     return df_resultados[columnas_finales]
 
-
 def puntuaciones_pisa_estratos(df, competencia,col_peso='W_FSTUWT'):
     """
-    Calcula la media ponderada de los 10 Valores Plausibles (PV) a nivel de ESTRATO.
-    
-    Argumentos:
-        df (pd.DataFrame): Dataset (ej. datos de 2022)
-        competencia (str): Sufijo de la competencia (ej. 'READ', 'MATH', 'SCIE').
+    Calcula la media ponderada de los valores plausibles por país y estrato.
     """
+    # Identificar las columnas de valores plausibles (Las queue empiecen por PV y terminen en el nombre de la competencia a evaluar)
+    cols_pv = [col for col in df.columns if col.startswith('PV') and col.endswith(competencia)]
     
-    # Columnas que conservamos
-    cols_identificacion = ['CNT', 'STRATUM', col_peso]
+    if not cols_pv:
+        raise ValueError(f"No se encontraron valores plausibles para {competencia}.")
+        
+    # Calcular la media de los PVs para cada alumno directamente
+    media_alumno = df[cols_pv].mean(axis=1)
     
-    # Generamos los nombres de las 10 columnas PV (PV1MATH, PV2MATH...)
-    cols_pv = [f'PV{i}{competencia}' for i in range(1, 11)]
+    # Calcular la nota ponderada de cada alumno
+    nota_ponderada = media_alumno * df[col_peso]
     
-    # Creamos un dataframe temporal solo con las columnas necesarias
-    df_temp = df[cols_identificacion + cols_pv].copy()
+    # Agrupar por país y estrato y calculamos la media 
+    # Agrupamos el DataFrame original usando series calculadas externamente
+    grouped = df.groupby(['CNT', 'STRATUM'])
     
-    # Calculamos la media de los 10 PVs para cada alumno 
-    df_temp['media_alumno'] = df_temp[cols_pv].mean(axis='columns') 
+    suma_notas = grouped.apply(lambda x: (media_alumno.loc[x.index] * x[col_peso]).sum())
+    suma_pesos = grouped[col_peso].sum()
     
-    # Ponderamos la nota del alumno por su peso
-    df_temp['nota_ponderada'] = df_temp['media_alumno'] * df_temp[col_peso]
+    # Generamos el dataframe de salida
+    df_estratos = (suma_notas / suma_pesos).reset_index(name=f'media_{competencia.lower()}_estrato')
     
-    # Agrupamos por país y estrato sumando notas ponderadas y pesos
-    df_estratos = df_temp.groupby(['CNT', 'STRATUM']).agg(
-        suma_notas=('nota_ponderada', 'sum'),
-        suma_pesos=(col_peso, 'sum')
-    ).reset_index()
-    
-    # Calculamos la media real del estrato ( la media ponderada  basada en los pesos )
-    nombre_col_final = f'media_{competencia.lower()}_estrato'
-    df_estratos[nombre_col_final] = df_estratos['suma_notas'] / df_estratos['suma_pesos']
-    
-    # Limpiamos las columnas intermedias y dejamos solo el resultado
-    columnas_finales = ['CNT', 'STRATUM', nombre_col_final]
-    
-    return df_estratos[columnas_finales]
+    return df_estratos
 
 def guardar_pickle(ruta_archivo: str, *objetos: Any) -> None:
     """
@@ -133,7 +122,6 @@ def guardar_pickle(ruta_archivo: str, *objetos: Any) -> None:
     except Exception as e:
         print(f"❌ Error al guardar en Pickle: {e}")
 
-
 def cargar_pickle(ruta_archivo: str) -> Any:
     """
     Carga objeto(s) desde un archivo binario (.pkl).
@@ -153,7 +141,6 @@ def cargar_pickle(ruta_archivo: str) -> Any:
         print(f"❌ Error al cargar desde Pickle: {e}")
         return None
     
-
 def establecer_semilla(seed: int = 42):
     """
     Fija las semillas de aleatoriedad para asegurar la reproducibilidad del proyecto.
