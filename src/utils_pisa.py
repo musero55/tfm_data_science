@@ -101,6 +101,42 @@ def puntuaciones_pisa_estratos(df, competencia,col_peso='W_FSTUWT'):
     
     return df_estratos
 
+def promedio_ponderado_indicadores_estrato(datos, variables, columna_peso, claves_agrupacion=None,):
+    """
+    Agrega indicadores ponderados por una o varias claves.
+    datos: datos no separados por estratos
+
+    """
+    #Crea un dataframe vacio que contiene las claves de agrupación 
+    resultado = datos[claves_agrupacion].drop_duplicates().reset_index(drop=True)
+
+    #Bucle para calcular el promedio ponderado de cada variable
+    for variable in variables:
+
+        #Localiza los datos válidos (no nulos) para la variable especifica 
+        datos_validos = datos.loc[datos[variable].notna(),claves_agrupacion + [variable, columna_peso]].copy()
+        #Multiplica la variable por el peso para obtener el indice ponderado
+        datos_validos['_suma_ponderada'] = datos_validos[variable] * datos_validos[columna_peso]
+
+        #Agrupa los datos por las claves de agrupación y calcula la suma ponderada y la suma de pesos
+        resumen = datos_validos.groupby(claves_agrupacion, as_index=False).agg(
+            suma_ponderada=('_suma_ponderada', 'sum'),
+            suma_pesos=(columna_peso, 'sum'),
+        )
+
+        # se divide el total acumulado entre el peso total del estrato
+        resumen[variable] = resumen['suma_ponderada'] / resumen['suma_pesos']
+
+        # Se genera el dataframe final uniendo el df vacio de resultado con el de resumen
+        resultado = resultado.merge(
+            resumen[claves_agrupacion + [variable]],
+            on=claves_agrupacion,
+            how='left',
+            validate='one_to_one',
+        )
+
+    return resultado
+
 def guardar_pickle(ruta_archivo: str, *objetos: Any) -> None:
     """
     Guarda uno o múltiples objetos de Python en un único archivo binario (.pkl).
