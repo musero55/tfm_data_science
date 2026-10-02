@@ -2,15 +2,10 @@
 pisa_txt_a_sav.py
 =================
 
-Conversión de las bases PISA antiguas (2000-2012), que la OCDE distribuye como
-fichero de texto de ancho fijo (.txt) más un programa SAS (.sas) con las
-posiciones de cada columna, a un `.sav` que `src/pisa_pipeline.py` ya sabe leer.
-
-Del script .sas se extraen: posiciones (INPUT), tipo texto/numérico (LENGTH),
-etiquetas de variable (LABEL), etiquetas de valor (PROC FORMAT) y los códigos de
-no-respuesta (el script recodifica 7/8/9, 97/98/99... a .N/.I/.M). Aquí todos
-esos códigos pasan a NaN, igual que pyreadstat hace con los missings especiales
-de SAS en las ediciones 2015-2022.
+Convierte las bases PISA antiguas (2000-2012: `.txt` de ancho fijo + script `.sas`
+con las posiciones) a un `.sav` que `pisa_pipeline.py` sabe leer. Del `.sas` se
+extraen posiciones, tipos, etiquetas y códigos de no-respuesta; estos últimos
+pasan a NaN, como hace pyreadstat con los missings de SAS en 2015-2022.
 
 Uso:
     from src.pisa_txt_a_sav import convertir_txt_a_sav
@@ -39,14 +34,9 @@ def _bloque(lineas: list[str], inicio: int) -> tuple[list[str], int]:
 
 
 def parsear_script_sas(ruta_sas: str) -> dict:
-    """Extrae del programa SAS toda la información necesaria para leer el .txt.
-
-    Devuelve un dict con: `columnas` (lista ordenada de (nombre, inicio, fin),
-    posiciones base 1 y fin incluido), `es_texto` (set de nombres de columnas
-    de texto), `etiquetas` ({NOMBRE_EN_MAYUSCULAS: etiqueta}), `codigos_faltantes`
-    ({nombre: [no aplica, inválido, sin respuesta]}), `etiquetas_valor`
-    ({nombre: {valor: etiqueta}}) y `ancho_linea`.
-    """
+    """Extrae del `.sas` el esquema del `.txt`: dict con `columnas` ((nombre, inicio,
+    fin), base 1), `es_texto`, `etiquetas`, `codigos_faltantes`, `etiquetas_valor`
+    y `ancho_linea`."""
     with open(ruta_sas, encoding='utf-8-sig', errors='replace') as f:
         lineas = [l.rstrip('\r\n') for l in f]
 
@@ -189,10 +179,7 @@ def leer_ancho_fijo(ruta_txt: str, esquema: dict, chunk_filas: int = 50_000) -> 
 
 
 def convertir_txt_a_sav(ruta_txt: str, ruta_sas: str, ruta_sav: str, chunk_filas: int = 50_000) -> pd.DataFrame:
-    """Convierte un .txt de ancho fijo PISA (+ su script .sas) a .sav con etiquetas.
-
-    Devuelve el DataFrame resultante para poder comprobarlo sin releer el fichero.
-    """
+    """Convierte el `.txt` (+ su `.sas`) a `.sav` con etiquetas y devuelve el DataFrame."""
     esquema = parsear_script_sas(ruta_sas)
     print(f'{os.path.basename(ruta_sas)}: {len(esquema["columnas"])} columnas, '
           f'{len(esquema["es_texto"])} de texto, {len(esquema["codigos_faltantes"])} con códigos de no-respuesta, '

@@ -2,26 +2,25 @@
 pisa_pipeline.py
 =================
 
-Funciones reutilizables para el procesamiento de microdatos PISA (ediciones en
-formato digital, 2015 en adelante) para los tres dominios de competencia
-principales: Matemáticas (MATH), Lectura (READ) y Ciencias (SCIE).
+Procesamiento de microdatos PISA 2012+ (dominios MATH, READ, SCIE).
 
+Flujo (ver `notebooks/fase_1_data_ingestion_eda/00_pipeline_multiedicion_PISA.ipynb`):
 
-⚠️ IMPORTANTE — variabilidad entre ediciones:
-    - El formato del PUF cambia entre ciclos: 2015/2018/2022 se distribuyen en
-      SAS (.sas7bdat), pero 2025 solo trae SPSS (.sav). `encontrar_archivo`
-      detecta el formato automáticamente por extensión (ver
-      `LECTORES_PYREADSTAT`), y los nombres de fichero también cambian de
-      capitalización entre ciclos (revisa los que descargues realmente de la
-      OCDE).
-    - No todas las variables de contexto están disponibles en todas las
-      ediciones (p. ej. ICTRES depende de la participación opcional del país
-      en el módulo ICT ese año concreto).
-    - Los índices derivados (ESCS, HOMEPOS, etc.) pueden estar en escalas no
-      directamente comparables entre ciclos. Para comparaciones longitudinales
-      rigurosas, la OCDE publica "rescaled trend indices" específicos —
-      revísalo si vas a comparar ediciones entre sí, no solo procesarlas por
-      separado.
+    1. `procesar_edicion`: lee estudiantes y centros de una edición, filtra países y
+       guarda 2 parquets sin imputar y con todas las columnas en `datos_anuales/`.
+    2. `vista_estudiantes` / `vista_colegios`: subconjunto de columnas para EDA.
+    3. `imputar_multivariante`: imputa (MICE) las columnas de contexto indicadas;
+       el resultado va a `datos_anuales_imputados/`.
+    4. `agregar_pv_por_pais` / `agregar_por_pais`: medias ponderadas por país.
+
+Estudiantes y centros son siempre tablas separadas (comparten CNT, STRATUM, CNTSCHID).
+
+⚠️ Las ediciones difieren: formato (2012 solo en .txt, convertible con
+`pisa_txt_a_sav.py`; 2025 solo .sav), nombres de columna (`alias_*` en
+`EDICIONES_PISA`), nº de valores plausibles (5 en 2012) y módulos de contexto
+administrados. Los índices de contexto no son necesariamente comparables entre
+ciclos; solo ESCS, HOMEPOS, HISEI y PAREDINT tienen versión reescalada
+(`escs_trend`, 2012-2018, aún sin integrar aquí).
 """
 
 from __future__ import annotations
@@ -31,36 +30,21 @@ import gc
 import numpy as np
 import pandas as pd
 import pyreadstat
-from sklearn.experimental import enable_iterative_imputer  # noqa: F401 (necesario para habilitar IterativeImputer)
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401 (habilita IterativeImputer)
 from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
 
 
-
-# 0. Configuración de ediciones PISA
+# 0. Configuración
 
 DOMINIOS = ['MATH', 'READ', 'SCIE']
 
-# Dominio principal (foco) de cada edición desde el paso a formato digital
-# (mayor número de ítems / mayor precisión de medición ese ciclo concreto).
-#
-# 'patron_estudiantes' / 'patron_colegios' son subcadenas que deben aparecer en
-# el nombre del fichero (comparación insensible a mayúsculas/minúsculas), no
-# el nombre exacto del archivo ni su extensión — `encontrar_archivo` prueba
-# tanto .sas7bdat como .sav. Esto evita depender de la capitalización concreta
-# que use la OCDE en cada edición (p. ej. 'CY08MSP_STU_QQQ.SAS7BDAT' en 2022
-# vs 'cy07_msu_stu_qqq.sas7bdat' en 2018): basta con que el patrón aparezca en
-# el nombre real, sea cual sea su capitalización o formato.
-#
-# 'alias_estudiantes' / 'alias_colegios' ({nombre_canónico: nombre_en_el_fichero})
-# traducen a los nombres que usa el pipeline las columnas que una edición
-# llama distinto. 'n_pv' es el número de valores plausibles de la edición
-# (10 desde 2015, 5 en ediciones anteriores).
+# Por edición: dominio principal del ciclo; 'patron_*' = subcadena del nombre de
+# fichero (sin distinguir mayúsculas ni extensión); 'n_pv' = valores plausibles
+# (10 desde 2015, 5 antes); 'alias_*' = {nombre_canónico: nombre_en_el_fichero}.
 EDICIONES_PISA = {
-    # PISA 2012 solo se distribuye como .txt de ancho fijo + script .sas: se
-    # convierte a .sav con `src/pisa_txt_a_sav.py` antes de usarlo aquí.
-    2012: {
-        'dominio_principal': 'MATH',  # Matemáticas fue dominio focal en 2003, 2012 y 2022
+    2012: {  # solo existe como .txt + .sas: convertir antes con `pisa_txt_a_sav.py`
+        'dominio_principal': 'MATH',
         'patron_estudiantes': 'stu12',
         'patron_colegios': 'scq12',
         'n_pv': 5,
@@ -77,7 +61,6 @@ EDICIONES_PISA = {
         'dominio_principal': 'SCIE',
         'patron_estudiantes': 'stu_qqq',
         'patron_colegios': 'sch_qqq',
-        # Como 2012, el fichero de 2015 trae estas dos en minúscula / con otro nombre
         'alias_estudiantes': {'HISEI': 'hisei', 'PAREDINT': 'PARED'},
     },
     2018: {
@@ -89,9 +72,10 @@ EDICIONES_PISA = {
         'dominio_principal': 'MATH',
         'patron_estudiantes': 'stu_qqq',
         'patron_colegios': 'sch_qqq',
+        'alias_estudiantes': {'BEINGBULLIED': 'BULLIED'},
     },
     2025: {
-        'dominio_principal': 'SCIE',  # 3ª vez que Ciencias es el dominio focal, tras 2006 y 2015
+        'dominio_principal': 'SCIE',
         'patron_estudiantes': 'stu_qqq',
         'patron_colegios': 'sch_qqq',
     },
@@ -99,73 +83,52 @@ EDICIONES_PISA = {
 
 COLUMNAS_BASICAS = ['CNT', 'CNTSCHID', 'STRATUM', 'W_FSTUWT']
 
-# Identificador de alumno: no interviene en el diseño muestral, pero permite
-# unir con ficheros externos por alumno (p. ej. `escs_trend` de la OCDE). Nunca
-# se imputa. Si una edición no lo trae, solo se avisa.
+# Id de alumno: nunca se imputa; sirve para unir con ficheros externos (`escs_trend`).
 COLUMNAS_ID_ALUMNO = ['CNTSTUID']
 
-# Peso base del centro (ajustado por no-respuesta) en el fichero de colegios.
-# Al submuestrear escuelas, la tabla de colegios también necesita el factor de
-# inflación: W_SCHGRNRABWT_adj. En 2012 se llama W_FSCHWT (alias en EDICIONES_PISA).
+# Peso del centro (en 2012 el fichero lo llama W_FSCHWT; ver alias).
 COLUMNAS_PESO_COLEGIO = ['W_SCHGRNRABWT']
 
-# Subcarpeta de `ruta_intermedios` donde se guardan los dos parquets anuales.
-CARPETA_DATOS_ANUALES = 'datos_anuales'
-# Subcarpeta con las mismas tablas tras imputar las columnas de contexto
-# (las que estén en `COLUMNAS_CONTEXTO_*` y tengan nulos); el resto sigue igual.
-CARPETA_DATOS_ANUALES_IMPUTADOS = 'datos_anuales_imputados'
+CARPETA_DATOS_ANUALES = 'datos_anuales'                      # sin imputar
+CARPETA_DATOS_ANUALES_IMPUTADOS = 'datos_anuales_imputados'  # tras imputar
 
-# Países miembros de la OCDE durante TODAS las ediciones 2012-2022 y con datos en
-# todas ellas (33). Derivado del flag `OECD` de los ficheros de centros: Letonia,
-# Lituania, Colombia y Costa Rica se incorporaron después de 2012; Luxemburgo es
-# miembro desde siempre, pero no tiene datos en PISA 2022, así que no puede
-# formar parte de un panel completo. No es la lista de miembros actuales.
+# Miembros de la OCDE en todas las ediciones 2012-2022 y con datos en todas (33).
+# Se excluyen LVA, LTU, COL y CRI (entraron después de 2012) y LUX (miembro, pero
+# sin datos en PISA 2022).
 PAISES_OCDE_TODAS_LAS_EDICIONES = [
     'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'CHL', 'CZE', 'DEU', 'DNK', 'ESP', 'EST',
     'FIN', 'FRA', 'GBR', 'GRC', 'HUN', 'IRL', 'ISL', 'ISR', 'ITA', 'JPN', 'KOR',
     'MEX', 'NLD', 'NOR', 'NZL', 'POL', 'PRT', 'SVK', 'SVN', 'SWE', 'TUR', 'USA',
 ]
 
-# Índices de contexto a nivel estudiante
+# Contexto del estudiante que se analiza (no todo existe en todas las ediciones).
 COLUMNAS_CONTEXTO_ESTUDIANTE = [
     'ESCS', 'HISEI', 'PAREDINT', 'HOMEPOS', 'WEALTH',
     'CULTPOSS', 'HEDRES', 'ICTRES',
     'ANXMAT', 'MATHEFF', 'MATHINT', 'MATHBEH',
-    'BELONG', 'BULLY', 'DISCLIMA', 'TEACHSUP',
-    'OUTHOURS',  # tiempo de estudio fuera del horario escolar (2012 y 2015)
-    'ICTWKDY', 'ICTWKEND',  # frecuencia de uso TIC entre semana/fin de semana (2022/2025)
-    'ICTDISTR',  # malestar por contenido online/ciberacoso (2022/2025)
-    'SKIPPING', 'TARDYSD',  # absentismo/impuntualidad (2022/2025)
+    'BELONG',
+    'BEINGBULLIED',  # acoso sufrido; solo 2018 (BEINGBULLIED) y 2022 (BULLIED, con alias)
+    'DISCLIMA', 'TEACHSUP',
+    'OUTHOURS',  # estudio fuera del horario escolar (2012 y 2015)
+    'ICTWKDY', 'ICTWKEND', 'ICTDISTR',  # uso TIC y malestar online (2022)
+    'SKIPPING', 'TARDYSD',  # absentismo e impuntualidad (2022)
 ]
 
-# Índices de contexto a nivel centro
+# Contexto del centro. SCHLTYPE: 1=privado independiente, 2=privado concertado, 3=público.
 COLUMNAS_CONTEXTO_COLEGIO = [
-    'STRATIO', 'PROPMATH', 'SCHLCLI', 'EDUSHORT', 'STAFFSHORT',
-    'SCHLTYPE',  # titularidad del centro: 1=privado independiente, 2=privado
-                 # concertado (dependiente del gobierno), 3=público. Presente
-                 # en las 4 ediciones (2015-2025).
-    'CLSIZE',  # tamaño de clase, presente en las 4 ediciones.
+    'STRATIO', 'PROPMATH', 'SCHLCLI', 'EDUSHORT', 'STAFFSHORT', 'SCHLTYPE', 'CLSIZE',
 ]
 
 
 def columnas_pv(dominio: str, n_pv: int = 10) -> list[str]:
-    """Nombres de los valores plausibles (PV1..PV`n_pv`) de un dominio.
-
-    PISA publica 10 PV por dominio desde 2015 y 5 en ediciones anteriores
-    (p. ej. 2012). Las funciones que agregan filtran por las columnas que
-    existan, así que `n_pv=10` sirve para cualquier edición.
-    """
+    """Nombres PV1..PV`n_pv` de un dominio. Las funciones que los usan filtran
+    por los que existan, así que `n_pv=10` vale también para 2012 (5 PV)."""
     if dominio not in DOMINIOS:
         raise ValueError(f"Dominio '{dominio}' no reconocido. Usa uno de {DOMINIOS}")
     return [f'PV{i}{dominio}' for i in range(1, n_pv + 1)]
 
 
-# La OCDE no siempre distribuye la misma edición en el mismo formato: PISA
-# 2015/2018/2022 se pidieron en SAS, pero el PUF de PISA 2025 solo trae .sav
-# (SPSS). pyreadstat expone una función de lectura por formato con la misma
-# firma (usecols, metadataonly...), así que basta con elegir la función según
-# la extensión real del fichero para que el resto del pipeline no distinga
-# entre formatos.
+# pyreadstat tiene una función por formato con la misma firma
 LECTORES_PYREADSTAT = {
     '.sas7bdat': pyreadstat.read_sas7bdat,
     '.sav': pyreadstat.read_sav,
@@ -173,8 +136,7 @@ LECTORES_PYREADSTAT = {
 
 
 def lector_para(ruta_archivo: str):
-    """Devuelve la función de pyreadstat (`read_sas7bdat`/`read_sav`) adecuada
-    para `ruta_archivo` según su extensión."""
+    """Función de pyreadstat adecuada a la extensión de `ruta_archivo`."""
     extension = os.path.splitext(ruta_archivo)[1].lower()
     if extension not in LECTORES_PYREADSTAT:
         raise ValueError(
@@ -185,17 +147,8 @@ def lector_para(ruta_archivo: str):
 
 
 def encontrar_archivo(ruta_carpeta: str, patron: str, extensiones: tuple[str, ...] | None = None) -> str:
-    """Busca en `ruta_carpeta` un archivo cuyo nombre contenga `patron`
-    (insensible a mayúsculas/minúsculas) y termine en alguna de `extensiones`
-    (por defecto, cualquiera de los formatos soportados por pyreadstat: SAS o
-    SPSS — la OCDE no siempre distribuye la misma edición en el mismo formato).
-
-    Evita depender del nombre exacto/capitalización que use la OCDE en cada
-    edición: basta con reconocer el patrón común ('stu_qqq', 'sch_qqq').
-
-    Lanza FileNotFoundError con un mensaje explícito si no encuentra ningún
-    candidato, o si encuentra más de uno (para no elegir uno al azar).
-    """
+    """Único archivo de `ruta_carpeta` cuyo nombre contiene `patron` (sin distinguir
+    mayúsculas) y tiene una extensión soportada. Falla si no hay ninguno o hay varios."""
     extensiones = tuple(e.lower() for e in (extensiones or LECTORES_PYREADSTAT.keys()))
     patron_low = patron.lower()
 
@@ -224,17 +177,8 @@ def columnas_disponibles(
     columnas: list[str],
     alias: dict[str, str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Compara `columnas` (nombres canónicos del pipeline) contra las columnas
-    realmente presentes en `ruta_archivo` (lee solo metadata, no los datos).
-    Devuelve (presentes, ausentes), siempre con nombres canónicos.
-
-    `alias` ({canónico: nombre_en_el_fichero}) traduce las columnas que esa
-    edición llama distinto antes de comprobar su existencia.
-
-    Necesario porque no todas las ediciones administran todos los módulos de
-    contexto (p. ej. ICT), así que una columna que existe en el fichero de un
-    año puede no existir en el de otro.
-    """
+    """(presentes, ausentes) de `columnas` (nombres canónicos) en el fichero.
+    Solo lee metadatos. `alias` traduce los nombres que la edición llama distinto."""
     alias = alias or {}
     _, meta = lector_para(ruta_archivo)(ruta_archivo, metadataonly=True)
     columnas_reales = set(meta.column_names)
@@ -246,10 +190,8 @@ def columnas_disponibles(
 def _traducir_columnas(
     columnas: list[str] | None, alias: dict[str, str] | None
 ) -> tuple[list[str] | None, dict[str, str]]:
-    """Nombres canónicos -> (nombres a leer del fichero, renombrado inverso
-    nombre_fichero -> canónico para aplicar tras la lectura). Con
-    `columnas=None` se leen todas las del fichero (`a_leer=None`) y se renombran
-    todas las que tengan alias."""
+    """(nombres a leer del fichero, renombrado fichero->canónico). Con
+    `columnas=None` se leen todas y se renombran todas las que tengan alias."""
     alias = alias or {}
     if columnas is None:
         return None, {v: k for k, v in alias.items() if v != k}
@@ -258,7 +200,7 @@ def _traducir_columnas(
     return a_leer, renombrar
 
 
-# 1. Selección de escuelas y submuestreo estratificado
+# 1. Submuestreo estratificado (opcional)
 
 def leer_escuelas_unicas(
     ruta_estudiantes: str,
@@ -266,11 +208,7 @@ def leer_escuelas_unicas(
     alias: dict[str, str] | None = None,
     paises: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Lee las columnas identificativas básicas y devuelve una fila por escuela
-    única (CNT, CNTSCHID, STRATUM), necesaria para diseñar el submuestreo. Si
-    se pasa `paises`, solo se consideran las escuelas de esos países (el
-    submuestreo es por estrato, así que filtrar antes no cambia qué escuelas se
-    eligen en los países que se conservan)."""
+    """Una fila por escuela (CNT, CNTSCHID, STRATUM), opcionalmente solo de `paises`."""
     a_leer, renombrar = _traducir_columnas(cols_basicas, alias)
     df_basic, _ = lector_para(ruta_estudiantes)(ruta_estudiantes, usecols=a_leer)
     df_basic = df_basic.rename(columns=renombrar)
@@ -287,16 +225,9 @@ def submuestreo_estratificado(
     fraccion: float = 0.20,
     seed: int = 42,
 ) -> tuple[set, dict, pd.DataFrame]:
-    """Selecciona un porcentaje de escuelas por cada estrato (país + STRATUM),
-    garantizando un mínimo de 2 escuelas cuando el estrato tiene 2 o más, y
-    calcula el factor de inflación asociado a cada estrato.
-
-    Devuelve
-    --------
-    escuelas_seleccionadas : set de tuplas (CNT, STRATUM, CNTSCHID)
-    factores_dict : dict {(CNT, STRATUM): factor_inflacion}
-    df_groups : dataframe resumen por estrato (trazabilidad / EDA del muestreo)
-    """
+    """Elige `fraccion` de las escuelas de cada estrato (CNT + STRATUM), mínimo 2
+    si el estrato tiene 2 o más. Devuelve (escuelas elegidas como tuplas
+    (CNT, STRATUM, CNTSCHID), {(CNT, STRATUM): factor_inflacion}, resumen por estrato)."""
     grupos = escuelas_unicas.groupby(['CNT', 'STRATUM'])
     df_groups = grupos.size().reset_index(name='total_escuelas')
 
@@ -315,20 +246,16 @@ def submuestreo_estratificado(
 
     for (pais, estrato), grupo in grupos:
         datos_estrato = groups_dict[(pais, estrato)]
-        n_colegios = datos_estrato['n_submuestra']
-        # Se asigna una única vez por estrato (antes se reasignaba en cada
-        # iteración del bucle interno de colegios de forma redundante)
         factores_dict[(pais, estrato)] = datos_estrato['factor_inflacion']
 
-        muestra = grupo.sample(n=n_colegios, random_state=seed)
+        muestra = grupo.sample(n=datos_estrato['n_submuestra'], random_state=seed)
         for colegio_id in muestra['CNTSCHID'].values:
             escuelas_seleccionadas.add((pais, estrato, colegio_id))
 
     return escuelas_seleccionadas, factores_dict, df_groups
 
 
-
-# 2. Lectura de estudiantes filtrada y ajuste de ponderaciones
+# 2. Lectura de estudiantes y centros
 
 def leer_estudiantes_submuestra(
     ruta_estudiantes: str,
@@ -339,16 +266,11 @@ def leer_estudiantes_submuestra(
     alias: dict[str, str] | None = None,
     paises: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Lee el fichero de estudiantes por bloques y conserva solo las filas
-    pedidas. `columnas` y el resultado usan nombres canónicos (`columnas=None`
-    lee todas las del fichero); `alias` traduce los que el fichero llame
-    distinto.
+    """Lee los estudiantes por bloques (`columnas=None`: todas, con nombres canónicos).
 
-    * Con `escuelas_seleccionadas` y `factores_dict` (submuestreo): conserva
-      solo esas escuelas y ajusta W_FSTUWT según el factor de inflación del
-      estrato (`factor_inflacion`, `W_FSTUWT_adj`).
-    * Sin ellos (muestra completa): conserva todos los alumnos de `paises` (o
-      de todos los países si es None) y no toca ningún peso.
+    Con `escuelas_seleccionadas` y `factores_dict` conserva solo esas escuelas y
+    añade `factor_inflacion` y `W_FSTUWT_adj`. Sin ellos conserva todos los
+    alumnos de `paises` (o de todos) con los pesos originales.
     """
     a_leer, renombrar = _traducir_columnas(columnas, alias)
     reader = pyreadstat.read_file_in_chunks(
@@ -404,9 +326,8 @@ def calcular_senwt(
     pais_col: str = 'CNT',
     total_senado: int = 5000,
 ) -> pd.DataFrame:
-    """Peso de "senado": reescala `peso_col` para que cada país sume
-    `total_senado` (5.000, convención OCDE). Los ficheros de 2015 en adelante ya
-    traen `SENWT`; el de 2012 no, y se calcula igual con esta función."""
+    """Añade el peso "senado": `peso_col` reescalado para que cada país sume
+    `total_senado` (convención OCDE). Los ficheros de 2015+ ya traen `SENWT`; 2012 no."""
     df_alumnos = df_alumnos.copy()
     suma_pesos_pais = df_alumnos.groupby(pais_col)[peso_col].transform('sum')
     df_alumnos[nombre] = df_alumnos[peso_col] * (total_senado / suma_pesos_pais)
@@ -419,8 +340,7 @@ def calcular_senwt_adj(
     pais_col: str = 'CNT',
     total_senado: int = 5000,
 ) -> pd.DataFrame:
-    """Peso de senado tras un submuestreo: la suma de `W_FSTUWT_adj` por país
-    vuelve a sumar `total_senado` (columna `SENWT_adj`)."""
+    """`calcular_senwt` sobre `W_FSTUWT_adj` (tras un submuestreo), columna `SENWT_adj`."""
     return calcular_senwt(df_alumnos, peso_col, 'SENWT_adj', pais_col, total_senado)
 
 
@@ -429,6 +349,7 @@ def leer_colegios(
     columnas: list[str] | None,
     alias: dict[str, str] | None = None,
 ) -> pd.DataFrame:
+    """Lee el fichero de centros (`columnas=None`: todas) con nombres canónicos."""
     a_leer, renombrar = _traducir_columnas(columnas, alias)
     df_colegios, _ = lector_para(ruta_colegios)(ruta_colegios, usecols=a_leer)
     return df_colegios.rename(columns=renombrar)
@@ -439,38 +360,24 @@ def unir_alumnos_colegios(
     df_colegios: pd.DataFrame,
     claves=('CNT', 'STRATUM', 'CNTSCHID'),
 ) -> pd.DataFrame:
+    """Left join alumnos-centros (no se usa: las tablas se mantienen separadas)."""
     return pd.merge(df_alumnos, df_colegios, on=list(claves), how='left')
 
 
-
-# 3. Optimización de tipos y análisis de nulos
-
-def optimizar_tipos(df: pd.DataFrame) -> pd.DataFrame:
-    """Downcast de columnas float64 a un tipo numérico más pequeño cuando es
-    posible, para reducir memoria."""
-    df = df.copy()
-    # Los identificadores no se pasan a float32: con 8 dígitos perderían
-    # precisión si tuvieran algún nulo.
-    for col in df.select_dtypes(include=['float64', 'float32']).columns:
-        if col in ('CNTSCHID', 'CNTSTUID'):
-            continue
-        df[col] = pd.to_numeric(df[col], errors='coerce', downcast='integer')
-        if df[col].dtype in ['float64', 'float32']:
-            df[col] = pd.to_numeric(df[col], downcast='float')
-    return df
-
+# 3. Nulos
 
 def porcentaje_nulos(df: pd.DataFrame) -> pd.Series:
+    """% de nulos por columna, de mayor a menor."""
     return (df.isnull().sum() / len(df) * 100).sort_values(ascending=False)
 
 
 def porcentaje_nulos_por_pais(df: pd.DataFrame, columna: str, pais_col: str = 'CNT') -> pd.DataFrame:
+    """% de nulos de `columna` en cada país, de mayor a menor."""
     resultado = df[columna].isna().groupby(df[pais_col]).mean() * 100
     return (
         resultado.reset_index(name=f'pct_nulos_{columna}')
         .sort_values(f'pct_nulos_{columna}', ascending=False)
     )
-
 
 
 # 4. Imputación multivariante (MICE)
@@ -482,50 +389,14 @@ def imputar_multivariante(
     max_iter: int = 10,
     excluir_de_imputacion: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Imputa nulos con IterativeImputer (MICE, estimador BayesianRidge) y
-    conserva las columnas indicadoras `<col>_missing` generadas por
-    add_indicator=True.
+    """Imputa con IterativeImputer (MICE, BayesianRidge) y añade `<col>_missing`.
 
-    A diferencia de la versión original del notebook 1, aquí SÍ se incorporan
-    al dataframe final las columnas indicadoras (antes se generaban y se
-    descartaban sin usarse).
-
-    Los PV1..PV10 de cada dominio se excluyen SIEMPRE de la imputación: su
-    ausencia no es un nulo de contexto missing-at-random, sino no-respuesta
-    total (el estudiante no llegó a hacer la prueba). Intentar rellenarlos con
-    una regresión sobre variables de contexto no tiene base metodológica (la
-    OCDE los genera con un modelo de respuesta al ítem) y en la práctica
-    produce matrices de diseño mal condicionadas: cuando faltan, faltan los 30
-    PV a la vez, así que sus 30 columnas indicadoras `_missing` quedan
-    duplicadas entre sí. Las filas sin ningún PV se eliminan antes de imputar
-    el resto de columnas.
-
-    Se usa `BayesianRidge` (el estimador que recomienda sklearn por defecto
-    para `IterativeImputer`) en vez de `Ridge`: varios índices de contexto
-    derivados de las mismas preguntas del cuestionario (HOMEPOS, WEALTH,
-    CULTPOSS, HEDRES, ICTRES, ESCS...) faltan juntos cuando el estudiante se
-    salta esa sección, lo que deja sus indicadoras `_missing` muy
-    correlacionadas entre sí y producía matrices mal condicionadas con
-    `Ridge` — incluso subiendo `alpha` a 10 (probado en PISA 2018/2022/2025)
-    seguían quedando `LinAlgWarning` sueltos (17 en PISA 2022). `BayesianRidge`
-    estima su propia fuerza de regularización a partir de los datos en cada
-    iteración en vez de usar un `alpha` fijo elegido a mano, y comprobado
-    empíricamente sobre PISA 2022: elimina el `LinAlgWarning` por completo y
-    da valores imputados prácticamente idénticos a `Ridge(alpha=10)`
-    (correlación 1.000, diferencias de milésimas) — mismo resultado, sin la
-    colinealidad residual y sin tener que justificar un `alpha` a mano.
-
-    Los identificadores de `COLUMNAS_BASICAS` (`CNT`, `CNTSCHID`, `STRATUM`,
-    `W_FSTUWT`) también se excluyen siempre: no tiene sentido "imputar" un
-    código de centro o de país vía regresión sobre índices de contexto. En
-    PISA 2025, un 2.45% de estudiantes tienen `CNTSCHID` nulo en el propio
-    fichero de origen (posible enmascarado de privacidad), lo que hace fallar
-    el merge con el fichero de centros — `STAFFSHORT`/`EDUSHORT` quedan nulos
-    exactamente para esas mismas filas. Incluir `CNTSCHID` (escala arbitraria
-    de miles de valores únicos) como columna a imputar agravaba muchísimo la
-    colinealidad (`rcond` ~1e-16, matriz prácticamente singular) sin aportar
-    nada: aunque se "rellenase" un CNTSCHID, no recupera los datos de centro
-    ya perdidos en el merge.
+    * Solo se imputan las `columnas_a_imputar` (por defecto, todas las que tengan
+      nulos) que tengan algún nulo y algún valor real; el resto no se toca.
+    * Nunca se imputan los PV, los ids ni `COLUMNAS_BASICAS`. Las filas sin PV
+      (alumnos que no hicieron la prueba) se eliminan antes.
+    * BayesianRidge en vez de Ridge: los índices derivados del mismo bloque de
+      preguntas faltan juntos y Ridge daba matrices mal condicionadas.
     """
     df = df.copy()
 
@@ -543,11 +414,8 @@ def imputar_multivariante(
         | set(excluir_de_imputacion or [])
     )
 
-    # Solo se imputan columnas con algún nulo Y algún valor real. Se decide tras
-    # eliminar las filas sin PV: una columna cuyos nulos estaban solo en esas
-    # filas ya no tiene nada que imputar, y una columna entera nula (módulo no
-    # administrado ese año) no se puede imputar ni la conserva IterativeImputer,
-    # lo que descuadraba los nombres de las indicadoras `_missing`.
+    # Se decide tras quitar las filas sin PV: una columna sin nulos o toda nula
+    # descuadraría los nombres de las indicadoras `_missing`.
     candidatas = df.columns if columnas_a_imputar is None else columnas_a_imputar
     columnas_a_imputar = [
         c for c in candidatas
@@ -589,7 +457,6 @@ def imputar_multivariante(
     return df
 
 
-
 # 5. Agregación por país
 
 def agregar_por_pais(
@@ -598,7 +465,7 @@ def agregar_por_pais(
     peso_col: str = 'W_FSTUWT',
     pais_col: str = 'CNT',
 ) -> pd.DataFrame:
-    """Media ponderada de cada índice (ya calculado como columna) por país."""
+    """Media ponderada por país de cada columna de `indices`."""
     return df.groupby(pais_col).apply(
         lambda x: pd.Series({
             indice: np.average(x[indice], weights=x[peso_col])
@@ -614,14 +481,8 @@ def agregar_pv_por_pais(
     peso_col: str = 'W_FSTUWT',
     pais_col: str = 'CNT',
 ) -> pd.Series:
-    """Media ponderada de los PV1..PV10 de un dominio, agrupada por país.
-
-    A diferencia de `agregar_por_pais` (que pondera un índice ya calculado por
-    fila), aquí primero se promedian los 10 valores plausibles del dominio por
-    estudiante y después se pondera esa media por `peso_col`, agrupando por
-    país. Devuelve una Serie vacía si el dominio no tiene columnas PV en `df`
-    (p. ej. si se eliminaron antes por algún motivo).
-    """
+    """Media por país de los PV de un dominio: promedia los PV de cada alumno y
+    pondera por `peso_col`. Serie vacía si `df` no tiene PV de ese dominio."""
     cols_pv = [c for c in columnas_pv(dominio) if c in df.columns]
     if not cols_pv:
         return pd.Series(dtype=float, name=dominio)
@@ -638,35 +499,29 @@ def agregar_pv_por_pais(
     )
 
 
-
-# 6. Orquestación completa por edición
+# 6. Orquestación por edición
 
 def _normalizar_ids(df: pd.DataFrame) -> pd.DataFrame:
-    """CNTSCHID y CNTSTUID son identificadores, no cantidades: se normalizan
-    siempre a string (algunas ediciones los traen como int, PISA 2012 y 2025
-    como string con ceros a la izquierda). Sin esto, concatenar ediciones con
-    dtypes distintos para la misma columna rompe la escritura a parquet.
-    OJO: usar el dtype nullable 'string' de pandas, no `.astype(str)` — este
-    último convierte un nulo real en el string literal 'None'/'nan', lo que
-    rompe silenciosamente `.isna()` para las filas sin identificador."""
+    """Ids de centro y alumno a dtype 'string' (vienen como número o como texto con
+    ceros, que se conservan). Los numéricos pasan por Int64 para no quedar como
+    '724.0'; no usar `astype(str)`: convertiría los nulos en el texto 'None'."""
     for id_col in ('CNTSCHID', 'CNTSTUID'):
         if id_col in df.columns:
+            if pd.api.types.is_numeric_dtype(df[id_col]):
+                df[id_col] = df[id_col].astype('Int64')
             df[id_col] = df[id_col].astype('string')
     return df
 
 
-# Columnas derivadas por el pipeline que acompañan a cualquier vista de análisis
-# (los *_adj y factor_inflacion solo existen si se submuestreó)
+# Columnas añadidas por el pipeline (las *_adj y factor_inflacion solo con submuestreo)
 _COLUMNAS_DERIVADAS_ESTUDIANTE = ['SENWT', 'factor_inflacion', 'W_FSTUWT_adj', 'SENWT_adj', 'EDICION', 'DOMINIO_PRINCIPAL']
 _COLUMNAS_DERIVADAS_COLEGIO = ['factor_inflacion', 'EDICION']
 
 
 def vista_estudiantes(df: pd.DataFrame) -> pd.DataFrame:
-    """Vista de análisis de la tabla de estudiantes: identificadores, pesos,
-    PV de los tres dominios y `COLUMNAS_CONTEXTO_ESTUDIANTE` (más las
-    indicadoras `<col>_missing` si ya se imputó). Las tablas guardadas en
-    parquet conservan todas las columnas originales de PISA; esta vista solo
-    acota lo que usan el EDA y las agregaciones de este pipeline."""
+    """Copia de `df` con solo ids, pesos, PV, `COLUMNAS_CONTEXTO_ESTUDIANTE` y sus
+    indicadoras `_missing`. Los parquets guardan todas las columnas; esto acota
+    lo que usa el EDA."""
     pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in df.columns]
     base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + pv + COLUMNAS_CONTEXTO_ESTUDIANTE
     indicadoras = [f'{c}_missing' for c in COLUMNAS_CONTEXTO_ESTUDIANTE if f'{c}_missing' in df.columns]
@@ -675,17 +530,17 @@ def vista_estudiantes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def vista_colegios(df: pd.DataFrame) -> pd.DataFrame:
-    """Vista de análisis de la tabla de colegios (ver `vista_estudiantes`)."""
-    base = ['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO + [f'{c}_adj' for c in COLUMNAS_PESO_COLEGIO]         + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO
+    """Como `vista_estudiantes`, para la tabla de centros."""
+    base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
+            + [f'{c}_adj' for c in COLUMNAS_PESO_COLEGIO]
+            + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
     indicadoras = [f'{c}_missing' for c in COLUMNAS_CONTEXTO_COLEGIO if f'{c}_missing' in df.columns]
     cols = [c for c in dict.fromkeys(base + indicadoras) if c in df.columns]
     return df[cols].copy()
 
 
 def _objetos_a_string(df: pd.DataFrame) -> pd.DataFrame:
-    """Las columnas de tipo object (texto, o texto mezclado con números en los
-    ficheros originales) se pasan al dtype nullable 'string' para que pyarrow
-    pueda escribirlas a parquet sin fallar por tipos mezclados."""
+    """Columnas object a dtype 'string' (pyarrow falla con tipos mezclados)."""
     for col in df.select_dtypes(include='object').columns:
         df[col] = df[col].map(lambda x: x if pd.isna(x) else str(x)).astype('string')
     return df
@@ -694,9 +549,8 @@ def _objetos_a_string(df: pd.DataFrame) -> pd.DataFrame:
 def rutas_datos_anuales(
     ruta_intermedios: str, año: int, imputados: bool = False
 ) -> tuple[str, str]:
-    """Rutas de los dos parquets anuales (estudiantes, colegios) de una edición:
-    `<ruta_intermedios>/datos_anuales/` (sin imputar) o, con `imputados=True`,
-    `<ruta_intermedios>/datos_anuales_imputados/`."""
+    """Rutas (estudiantes, colegios) de los parquets de una edición, en
+    `datos_anuales/` o, con `imputados=True`, en `datos_anuales_imputados/`."""
     carpeta = os.path.join(
         ruta_intermedios,
         CARPETA_DATOS_ANUALES_IMPUTADOS if imputados else CARPETA_DATOS_ANUALES,
@@ -720,41 +574,18 @@ def procesar_edicion(
     guardar_checkpoint: bool = True,
     usar_checkpoint_si_existe: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Pipeline de una edición PISA. Devuelve `(df_estudiantes, df_colegios)`:
-    dos tablas separadas, NO unidas, que se guardan en
-    `<ruta_intermedios>/datos_anuales/` como `pisa<año>_estudiantes.parquet` y
-    `pisa<año>_colegios.parquet` (sin imputar: los nulos siguen ahí).
+    """Procesa una edición y devuelve `(df_estudiantes, df_colegios)`, sin imputar.
+    Los guarda en `datos_anuales/` (`pisa<año>_estudiantes/colegios.parquet`).
 
-    1. Filtro de países (`paises`, por defecto los miembros OCDE de todas las
-       ediciones; `None` conserva todos).
-    2. Muestra: por defecto (`fraccion=None`) se conservan **todas** las
-       escuelas y alumnos de esos países con los pesos originales de la OCDE
-       (`W_FSTUWT`, `SENWT`, `W_SCHGRNRABWT`); `SENWT` se calcula en 2012, que no
-       lo trae. Con `fraccion` entre 0 y 1 se hace submuestreo estratificado de
-       escuelas y se añaden `factor_inflacion`, `W_FSTUWT_adj`, `SENWT_adj` y
-       `W_SCHGRNRABWT_adj`.
-    3. Estudiantes: lectura por bloques; colegios: una fila por escuela.
-    4. Optimización de tipos y normalización de identificadores.
-    5. Etiquetado de edición (y dominio principal del ciclo en estudiantes).
-
-    Por defecto se conservan TODAS las columnas de los ficheros originales
-    (`columnas_estudiante=None`, `columnas_colegio=None`), con los nombres que
-    usa el pipeline para las que una edición llame distinto (`alias_*` de
-    `EDICIONES_PISA`); el resto de columnas mantiene su nombre original. Las
-    columnas de contexto que se analizan (`COLUMNAS_CONTEXTO_*`) se
-    comprueban contra el fichero y se avisa de las que falten. Pasando una
-    lista se restringe la lectura a esas columnas (más las imprescindibles).
-
-    La tabla de estudiantes incluye las puntuaciones (PV1..PV10, o PV1..PV5 en
-    2012) de los TRES dominios (MATH, READ, SCIE). Ambas tablas comparten `CNT`,
-    `STRATUM` y `CNTSCHID` por si se quieren unir más adelante
-    (`unir_alumnos_colegios`). Los pesos replicados (W_FSTURWT1..80; W_FSTR1..80
-    en 2012) son los originales: solo valen tal cual con la muestra completa.
-
-    Si `usar_checkpoint_si_existe` es True y ya existen los dos parquets de esta
-    edición, se cargan directamente y se evita releer/reprocesar los ficheros de
-    origen (que es el paso costoso). Pasa `usar_checkpoint_si_existe=False` para
-    forzar el reprocesamiento (necesario si cambias `paises` o `fraccion`).
+    * `paises`: países a conservar (None = todos).
+    * `fraccion=None`: muestra completa con pesos originales (`SENWT` se calcula en
+      2012). Con `fraccion` en (0, 1): submuestreo de escuelas por estrato y pesos
+      ajustados `*_adj`.
+    * `columnas_*=None`: todas las columnas originales, con los nombres canónicos
+      de `alias_*`. Una lista restringe la lectura a esas (más las imprescindibles).
+    * Avisa de las columnas de `COLUMNAS_CONTEXTO_*` que el fichero no tiene.
+    * Con `usar_checkpoint_si_existe`, si los parquets ya existen se cargan sin
+      releer el origen (ponlo a False si cambias `paises` o `fraccion`).
     """
     if año not in EDICIONES_PISA:
         raise ValueError(f"Edición {año} no configurada en EDICIONES_PISA")
@@ -776,7 +607,7 @@ def procesar_edicion(
     ruta_estudiantes = encontrar_archivo(ruta_raw, cfg['patron_estudiantes'])
     ruta_colegios = encontrar_archivo(ruta_raw, cfg['patron_colegios'])
 
-    # 1. Filtro de países y submuestreo de escuelas
+    # 1. Países y (opcional) submuestreo de escuelas
     submuestrear = fraccion is not None and fraccion < 1
     escuelas_unicas = leer_escuelas_unicas(ruta_estudiantes, COLUMNAS_BASICAS, alias_est, paises)
     if paises is not None:
@@ -788,10 +619,7 @@ def procesar_edicion(
     else:
         escuelas_sel, factores = None, None
 
-    # 2. Estudiantes. No todas las ediciones administran todos los módulos de
-    # contexto: se comprueba contra la metadata real del fichero y se avisa de
-    # lo que falte en vez de dejar que pyreadstat reviente con un usecols
-    # inexistente.
+    # 2. Estudiantes (se comprueban antes las columnas contra los metadatos del fichero)
     n_pv = cfg.get('n_pv', 10)
     columnas_pv_totales = sum((columnas_pv(d, n_pv) for d in DOMINIOS), [])
     imprescindibles_est = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + columnas_pv_totales
@@ -823,14 +651,12 @@ def procesar_edicion(
         df_estudiantes = calcular_senwt_adj(df_estudiantes)
     elif 'SENWT' not in df_estudiantes.columns:
         df_estudiantes = calcular_senwt(df_estudiantes)
-    df_estudiantes = optimizar_tipos(df_estudiantes)
     df_estudiantes = _normalizar_ids(df_estudiantes)
     df_estudiantes = _objetos_a_string(df_estudiantes)
-    # assign (en vez de asignar columna a columna) evita la fragmentación del
-    # DataFrame, que con cientos de columnas dispara PerformanceWarning
+    # assign evita la fragmentación del DataFrame (PerformanceWarning con cientos de columnas)
     df_estudiantes = df_estudiantes.assign(EDICION=año, DOMINIO_PRINCIPAL=cfg['dominio_principal'])
 
-    # 3. Colegios: solo las escuelas seleccionadas, una fila por escuela
+    # 3. Colegios
     claves_col = ['CNT', 'STRATUM', 'CNTSCHID']
     _, ausentes_col = columnas_disponibles(
         ruta_colegios,
@@ -870,13 +696,12 @@ def procesar_edicion(
                 df_colegios[f'{peso}_adj'] = df_colegios[peso] * df_colegios['factor_inflacion']
     elif paises is not None:
         df_colegios = df_colegios[df_colegios['CNT'].isin(paises)].copy()
-    df_colegios = optimizar_tipos(df_colegios.reset_index(drop=True))
+    df_colegios = df_colegios.reset_index(drop=True)
     df_colegios = _normalizar_ids(df_colegios)
     df_colegios = _objetos_a_string(df_colegios)
     df_colegios = df_colegios.assign(EDICION=año)
 
-    # 4. Guardado: dos parquets por año en datos_anuales/ (permite re-arrancar
-    # sin releer el origen)
+    # 4. Guardado (también sirve de punto de reinicio)
     if guardar_checkpoint:
         os.makedirs(os.path.dirname(ruta_est), exist_ok=True)
         df_estudiantes.to_parquet(ruta_est, engine='pyarrow', index=False)
@@ -886,3 +711,75 @@ def procesar_edicion(
     gc.collect()
 
     return df_estudiantes, df_colegios
+
+
+# 7. Validación y documentación de las tablas maestras
+
+def validar_tablas(
+    df_est: pd.DataFrame,
+    df_col: pd.DataFrame,
+    paises: list[str] | None = None,
+) -> pd.DataFrame:
+    """Comprueba la integridad de las tablas de una edición y devuelve un resumen
+    (valor, ok). Lanza AssertionError si falla alguna comprobación.
+
+    Claves: alumno = (CNT, CNTSTUID) (en 2012 el id solo es único dentro del país);
+    centro = (CNT, CNTSCHID).
+    """
+    pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in df_est.columns]
+    idx_est = pd.MultiIndex.from_frame(df_est[['CNT', 'CNTSCHID']])
+    idx_col = pd.MultiIndex.from_frame(df_col[['CNT', 'CNTSCHID']])
+    desvio_senwt = (df_est.groupby('CNT')['SENWT'].sum() - 5000).abs().max()
+
+    comprobaciones = {
+        'países distintos a los pedidos': (
+            0 if paises is None else len(set(df_est['CNT']) ^ set(paises))
+        ),
+        'alumnos duplicados (CNT, CNTSTUID)': int(df_est.duplicated(['CNT', 'CNTSTUID']).sum()),
+        'centros duplicados (CNT, CNTSCHID)': int(df_col.duplicated(['CNT', 'CNTSCHID']).sum()),
+        'ids nulos': int(df_est[['CNTSCHID', 'CNTSTUID']].isna().sum().sum() + df_col['CNTSCHID'].isna().sum()),
+        'alumnos sin centro en la tabla de colegios': int((~idx_est.isin(idx_col)).sum()),
+        'centros sin alumnos': int((~idx_col.isin(idx_est.unique())).sum()),
+        'pesos de alumno nulos o <= 0': int((df_est['W_FSTUWT'].isna() | (df_est['W_FSTUWT'] <= 0)).sum()),
+        'pesos de centro nulos o <= 0': int((df_col['W_SCHGRNRABWT'].isna() | (df_col['W_SCHGRNRABWT'] <= 0)).sum()),
+        'valores plausibles nulos': int(df_est[pv].isna().sum().sum()),
+        'desvío máximo de SENWT respecto a 5000 por país': float(desvio_senwt),
+    }
+    resumen = pd.DataFrame({'valor': comprobaciones})
+    # SENWT: se tolera un desvío de redondeo de 0,01 sobre 5000
+    tolerancia = pd.Series(1e-9, index=resumen.index)
+    tolerancia['desvío máximo de SENWT respecto a 5000 por país'] = 0.01
+    resumen['ok'] = resumen['valor'] <= tolerancia
+    assert resumen['ok'].all(), f'Validación fallida:\n{resumen[~resumen["ok"]]}'
+    return resumen
+
+
+def generar_diccionario_columnas(
+    ruta_raw_base: str, ediciones: list[int], ruta_salida: str | None = None
+) -> pd.DataFrame:
+    """Diccionario (EDICION, TABLA, COLUMNA, NOMBRE_ORIGINAL, ETIQUETA) de las
+    columnas de los ficheros originales, con los nombres canónicos de los parquets.
+    Solo lee metadatos. Incluye las columnas añadidas por el pipeline. Si se da
+    `ruta_salida`, lo guarda como CSV."""
+    filas = []
+    for año in ediciones:
+        cfg = EDICIONES_PISA[año]
+        carpeta = os.path.join(ruta_raw_base, str(año))
+        for tabla in ('estudiantes', 'colegios'):
+            alias = cfg.get(f'alias_{tabla}') or {}
+            inverso = {v: k for k, v in alias.items()}
+            ruta = encontrar_archivo(carpeta, cfg[f'patron_{tabla}'])
+            _, meta = lector_para(ruta)(ruta, metadataonly=True)
+            for nombre, etiqueta in zip(meta.column_names, meta.column_labels):
+                filas.append((año, tabla, inverso.get(nombre, nombre), nombre, etiqueta or ''))
+            filas.append((año, tabla, 'EDICION', '', 'Añadida por el pipeline: año de la edición'))
+        filas.append((año, 'estudiantes', 'DOMINIO_PRINCIPAL', '', 'Añadida por el pipeline: dominio focal del ciclo'))
+        if not any(f[0] == año and f[1] == 'estudiantes' and f[2] == 'SENWT' for f in filas):
+            filas.append((año, 'estudiantes', 'SENWT', '',
+                          'Añadida por el pipeline: peso senado (W_FSTUWT reescalado, cada país suma 5000)'))
+    diccionario = pd.DataFrame(
+        filas, columns=['EDICION', 'TABLA', 'COLUMNA', 'NOMBRE_ORIGINAL', 'ETIQUETA']
+    )
+    if ruta_salida:
+        diccionario.to_csv(ruta_salida, index=False, encoding='utf-8-sig')
+    return diccionario
