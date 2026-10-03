@@ -7,11 +7,13 @@ Procesamiento de microdatos PISA 2012+ (dominios MATH, READ, SCIE).
 Flujo (ver `notebooks/fase_1_data_ingestion_eda/00_pipeline_multiedicion_PISA.ipynb`):
 
     1. `procesar_edicion`: lee estudiantes y centros de una edición, filtra países y
-       guarda 2 parquets sin imputar y con todas las columnas en `datos_anuales/`.
-    2. `vista_estudiantes` / `vista_colegios`: subconjunto de columnas para EDA.
-    3. `imputar_multivariante`: imputa (MICE) las columnas de contexto indicadas;
-       el resultado va a `datos_anuales_imputados/`.
-    4. `agregar_pv_por_pais` / `agregar_por_pais`: medias ponderadas por país.
+       guarda 2 parquets sin imputar y con todas las columnas en `datos_anuales/`,
+       más las columnas `*_TREND` de `escs_trend.csv`.
+    2. `leer_vista_estudiantes` / `leer_vista_colegios`: leen del parquet solo las
+       columnas curadas, para EDA.
+    3. `agregar_pv_por_pais` / `agregar_por_pais`: medias ponderadas por país.
+    4. `validar_tablas` y `generar_diccionario_columnas`: control de calidad y
+       documentación de las tablas.
 
 Estudiantes y centros son siempre tablas separadas (comparten CNT, STRATUM, CNTSCHID).
 
@@ -20,7 +22,7 @@ Estudiantes y centros son siempre tablas separadas (comparten CNT, STRATUM, CNTS
 `EDICIONES_PISA`), nº de valores plausibles (5 en 2012) y módulos de contexto
 administrados. Los índices de contexto no son necesariamente comparables entre
 ciclos; solo ESCS, HOMEPOS, HISEI y PAREDINT tienen versión reescalada
-(`escs_trend`, 2012-2018, aún sin integrar aquí).
+(`escs_trend`, 2012-2018, integradas como columnas `*_TREND`).
 """
 
 from __future__ import annotations
@@ -29,10 +31,8 @@ import os
 import gc
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import pyreadstat
-from sklearn.experimental import enable_iterative_imputer  # noqa: F401 (habilita IterativeImputer)
-from sklearn.impute import IterativeImputer
-from sklearn.linear_model import BayesianRidge
 
 
 # 0. Configuración
@@ -83,14 +83,13 @@ EDICIONES_PISA = {
 
 COLUMNAS_BASICAS = ['CNT', 'CNTSCHID', 'STRATUM', 'W_FSTUWT']
 
-# Id de alumno: nunca se imputa; sirve para unir con ficheros externos (`escs_trend`).
+# Id de alumno: sirve para unir con ficheros externos (`escs_trend`).
 COLUMNAS_ID_ALUMNO = ['CNTSTUID']
 
 # Peso del centro (en 2012 el fichero lo llama W_FSCHWT; ver alias).
 COLUMNAS_PESO_COLEGIO = ['W_SCHGRNRABWT']
 
-CARPETA_DATOS_ANUALES = 'datos_anuales'                      # sin imputar
-CARPETA_DATOS_ANUALES_IMPUTADOS = 'datos_anuales_imputados'  # tras imputar
+CARPETA_DATOS_ANUALES = 'datos_anuales'   # tablas maestras sin imputar
 
 # Miembros de la OCDE en todas las ediciones 2012-2022 y con datos en todas (33).
 # Se excluyen LVA, LTU, COL y CRI (entraron después de 2012) y LUX (miembro, pero
@@ -100,6 +99,16 @@ PAISES_OCDE_TODAS_LAS_EDICIONES = [
     'FIN', 'FRA', 'GBR', 'GRC', 'HUN', 'IRL', 'ISL', 'ISR', 'ITA', 'JPN', 'KOR',
     'MEX', 'NLD', 'NOR', 'NZL', 'POL', 'PRT', 'SVK', 'SVN', 'SWE', 'TUR', 'USA',
 ]
+
+# Índices reescalados por la OCDE (`escs_trend.csv`, 2012-2018, comparables con
+# 2022). {columna original: columna del csv}. Se añaden como `<col>_TREND`.
+INDICES_TREND = {
+    'ESCS': 'escs_trend', 'HISEI': 'hisei_trend',
+    'HOMEPOS': 'homepos_trend', 'PAREDINT': 'paredint_trend',
+}
+COLUMNAS_TREND = [f'{c}_TREND' for c in INDICES_TREND]
+CICLO_ESCS_TREND = {2012: 5, 2015: 6, 2018: 7}          # ciclo de cada edición en el csv
+_MODULO_IDS_ESCS_TREND = {2012: None, 2015: 100000, 2018: 100000}  # 2015/2018: sin prefijo de país
 
 # Contexto del estudiante que se analiza (no todo existe en todas las ediciones).
 COLUMNAS_CONTEXTO_ESTUDIANTE = [
@@ -112,6 +121,7 @@ COLUMNAS_CONTEXTO_ESTUDIANTE = [
     'OUTHOURS',  # estudio fuera del horario escolar (2012 y 2015)
     'ICTWKDY', 'ICTWKEND', 'ICTDISTR',  # uso TIC y malestar online (2022)
     'SKIPPING', 'TARDYSD',  # absentismo e impuntualidad (2022)
+    'ESCS_TREND', 'HISEI_TREND', 'HOMEPOS_TREND', 'PAREDINT_TREND',  # añadidas por el pipeline
 ]
 
 # Contexto del centro. SCHLTYPE: 1=privado independiente, 2=privado concertado, 3=público.
@@ -380,84 +390,7 @@ def porcentaje_nulos_por_pais(df: pd.DataFrame, columna: str, pais_col: str = 'C
     )
 
 
-# 4. Imputación multivariante (MICE)
-
-def imputar_multivariante(
-    df: pd.DataFrame,
-    columnas_a_imputar: list[str] | None = None,
-    seed: int = 42,
-    max_iter: int = 10,
-    excluir_de_imputacion: list[str] | None = None,
-) -> pd.DataFrame:
-    """Imputa con IterativeImputer (MICE, BayesianRidge) y añade `<col>_missing`.
-
-    * Solo se imputan las `columnas_a_imputar` (por defecto, todas las que tengan
-      nulos) que tengan algún nulo y algún valor real; el resto no se toca.
-    * Nunca se imputan los PV, los ids ni `COLUMNAS_BASICAS`. Las filas sin PV
-      (alumnos que no hicieron la prueba) se eliminan antes.
-    * BayesianRidge en vez de Ridge: los índices derivados del mismo bloque de
-      preguntas faltan juntos y Ridge daba matrices mal condicionadas.
-    """
-    df = df.copy()
-
-    columnas_pv_todas = sum((columnas_pv(d) for d in DOMINIOS), [])
-    columnas_pv_presentes = [c for c in columnas_pv_todas if c in df.columns]
-    if columnas_pv_presentes:
-        filas_sin_pv = df[columnas_pv_presentes].isnull().any(axis=1)
-        if filas_sin_pv.any():
-            print(f'  Se eliminan {filas_sin_pv.sum()} fila(s) sin ningún valor '
-                  f'plausible (no realizaron la prueba); no se imputan.')
-            df = df[~filas_sin_pv].reset_index(drop=True)
-
-    excluir = (
-        set(columnas_pv_presentes) | set(COLUMNAS_BASICAS) | set(COLUMNAS_ID_ALUMNO)
-        | set(excluir_de_imputacion or [])
-    )
-
-    # Se decide tras quitar las filas sin PV: una columna sin nulos o toda nula
-    # descuadraría los nombres de las indicadoras `_missing`.
-    candidatas = df.columns if columnas_a_imputar is None else columnas_a_imputar
-    columnas_a_imputar = [
-        c for c in candidatas
-        if c in df.columns and c not in excluir
-        and df[c].isnull().any() and df[c].notna().any()
-    ]
-
-    if not columnas_a_imputar:
-        return df
-
-    imputador = IterativeImputer(
-        estimator=BayesianRidge(),
-        max_iter=max_iter,
-        random_state=seed,
-        add_indicator=True,
-    )
-
-    array_imputado = imputador.fit_transform(df[columnas_a_imputar])
-
-    n_indicadoras = array_imputado.shape[1] - len(columnas_a_imputar)
-    cols_indicadoras = [f'{col}_missing' for col in columnas_a_imputar][:n_indicadoras]
-
-    df_imputado = pd.DataFrame(
-        array_imputado,
-        columns=columnas_a_imputar + cols_indicadoras,
-        index=df.index,
-    )
-
-    for col in columnas_a_imputar:
-        df[col] = df_imputado[col]
-
-    for col in cols_indicadoras:
-        df[col] = df_imputado[col].astype(bool)
-
-    assert df[columnas_a_imputar].isnull().sum().sum() == 0, (
-        'Error: todavía quedan nulos tras la imputación'
-    )
-
-    return df
-
-
-# 5. Agregación por país
+# 4. Agregación por país
 
 def agregar_por_pais(
     df: pd.DataFrame,
@@ -499,7 +432,7 @@ def agregar_pv_por_pais(
     )
 
 
-# 6. Orquestación por edición
+# 5. Orquestación por edición
 
 def _normalizar_ids(df: pd.DataFrame) -> pd.DataFrame:
     """Ids de centro y alumno a dtype 'string' (vienen como número o como texto con
@@ -518,25 +451,73 @@ _COLUMNAS_DERIVADAS_ESTUDIANTE = ['SENWT', 'factor_inflacion', 'W_FSTUWT_adj', '
 _COLUMNAS_DERIVADAS_COLEGIO = ['factor_inflacion', 'EDICION']
 
 
-def vista_estudiantes(df: pd.DataFrame) -> pd.DataFrame:
-    """Copia de `df` con solo ids, pesos, PV, `COLUMNAS_CONTEXTO_ESTUDIANTE` y sus
-    indicadoras `_missing`. Los parquets guardan todas las columnas; esto acota
-    lo que usa el EDA."""
-    pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in df.columns]
+def _columnas_vista_estudiantes(nombres) -> list[str]:
+    pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in nombres]
     base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + pv + COLUMNAS_CONTEXTO_ESTUDIANTE
-    indicadoras = [f'{c}_missing' for c in COLUMNAS_CONTEXTO_ESTUDIANTE if f'{c}_missing' in df.columns]
-    cols = [c for c in dict.fromkeys(base + indicadoras) if c in df.columns]
-    return df[cols].copy()
+    return [c for c in dict.fromkeys(base) if c in nombres]
+
+
+def _columnas_vista_colegios(nombres) -> list[str]:
+    base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
+            + [f'{c}_adj' for c in COLUMNAS_PESO_COLEGIO]
+            + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
+    return [c for c in dict.fromkeys(base) if c in nombres]
+
+
+def vista_estudiantes(df: pd.DataFrame) -> pd.DataFrame:
+    """Copia de `df` con solo ids, pesos, PV y `COLUMNAS_CONTEXTO_ESTUDIANTE`. Los
+    parquets guardan todas las columnas; esto acota lo que usa el EDA."""
+    return df[_columnas_vista_estudiantes(set(df.columns))].copy()
 
 
 def vista_colegios(df: pd.DataFrame) -> pd.DataFrame:
     """Como `vista_estudiantes`, para la tabla de centros."""
-    base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
-            + [f'{c}_adj' for c in COLUMNAS_PESO_COLEGIO]
-            + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
-    indicadoras = [f'{c}_missing' for c in COLUMNAS_CONTEXTO_COLEGIO if f'{c}_missing' in df.columns]
-    cols = [c for c in dict.fromkeys(base + indicadoras) if c in df.columns]
-    return df[cols].copy()
+    return df[_columnas_vista_colegios(set(df.columns))].copy()
+
+
+def leer_vista_estudiantes(ruta_parquet: str) -> pd.DataFrame:
+    """`vista_estudiantes` leyendo del parquet solo esas columnas (sin cargar todas)."""
+    nombres = pq.ParquetFile(ruta_parquet).schema.names
+    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_estudiantes(set(nombres)))
+
+
+def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
+    """`vista_colegios` leyendo del parquet solo esas columnas."""
+    nombres = pq.ParquetFile(ruta_parquet).schema.names
+    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
+
+
+def anadir_indices_trend(df: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
+    """Añade `ESCS_TREND`, `HISEI_TREND`, `HOMEPOS_TREND` y `PAREDINT_TREND` desde
+    `escs_trend.csv` de la OCDE, uniendo por país, centro y alumno. Los índices
+    originales no se tocan. 2022 no está en el csv (su escala es la de referencia):
+    sus columnas `_TREND` son copia de las originales. Falla si casa <99,9%."""
+    if año not in CICLO_ESCS_TREND:
+        return df.assign(**{f'{c}_TREND': df[c] for c in INDICES_TREND if c in df.columns})
+
+    modulo = _MODULO_IDS_ESCS_TREND[año]
+
+    def clave(serie):
+        x = pd.to_numeric(serie, errors='coerce').astype('Int64')
+        return x % modulo if modulo else x
+
+    t = pd.read_csv(
+        ruta_csv, usecols=['cycle', 'cnt', 'schoolid', 'studentid', *INDICES_TREND.values()],
+        dtype={'schoolid': str, 'studentid': str},
+    )
+    t = t[t['cycle'] == CICLO_ESCS_TREND[año]]
+    t = t.assign(
+        CNT=t['cnt'], _s=clave(t['schoolid']), _st=clave(t['studentid'])
+    ).drop(columns=['cycle', 'cnt', 'schoolid', 'studentid'])
+
+    k = pd.DataFrame({'CNT': df['CNT'], '_s': clave(df['CNTSCHID']), '_st': clave(df['CNTSTUID'])})
+    m = k.merge(t, how='left', on=['CNT', '_s', '_st'], validate='many_to_one', indicator=True)
+    assert len(m) == len(df), 'El merge con escs_trend ha cambiado el número de filas'
+    casan = (m['_merge'] == 'both').mean()
+    if casan < 0.999:
+        raise ValueError(f'PISA {año}: solo casa el {casan:.2%} de los alumnos con escs_trend.csv')
+    print(f'  escs_trend: casa el {casan:.2%} de los alumnos')
+    return df.assign(**{f'{c}_TREND': m[v].to_numpy() for c, v in INDICES_TREND.items()})
 
 
 def _objetos_a_string(df: pd.DataFrame) -> pd.DataFrame:
@@ -546,15 +527,9 @@ def _objetos_a_string(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def rutas_datos_anuales(
-    ruta_intermedios: str, año: int, imputados: bool = False
-) -> tuple[str, str]:
-    """Rutas (estudiantes, colegios) de los parquets de una edición, en
-    `datos_anuales/` o, con `imputados=True`, en `datos_anuales_imputados/`."""
-    carpeta = os.path.join(
-        ruta_intermedios,
-        CARPETA_DATOS_ANUALES_IMPUTADOS if imputados else CARPETA_DATOS_ANUALES,
-    )
+def rutas_datos_anuales(ruta_intermedios: str, año: int) -> tuple[str, str]:
+    """Rutas (estudiantes, colegios) de los parquets de una edición en `datos_anuales/`."""
+    carpeta = os.path.join(ruta_intermedios, CARPETA_DATOS_ANUALES)
     return (
         os.path.join(carpeta, f'pisa{año}_estudiantes.parquet'),
         os.path.join(carpeta, f'pisa{año}_colegios.parquet'),
@@ -573,6 +548,7 @@ def procesar_edicion(
     columnas_colegio: list[str] | None = None,
     guardar_checkpoint: bool = True,
     usar_checkpoint_si_existe: bool = True,
+    ruta_escs_trend: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Procesa una edición y devuelve `(df_estudiantes, df_colegios)`, sin imputar.
     Los guarda en `datos_anuales/` (`pisa<año>_estudiantes/colegios.parquet`).
@@ -584,6 +560,7 @@ def procesar_edicion(
     * `columnas_*=None`: todas las columnas originales, con los nombres canónicos
       de `alias_*`. Una lista restringe la lectura a esas (más las imprescindibles).
     * Avisa de las columnas de `COLUMNAS_CONTEXTO_*` que el fichero no tiene.
+    * Con `ruta_escs_trend`, añade las columnas `*_TREND` (ver `anadir_indices_trend`).
     * Con `usar_checkpoint_si_existe`, si los parquets ya existen se cargan sin
       releer el origen (ponlo a False si cambias `paises` o `fraccion`).
     """
@@ -625,7 +602,10 @@ def procesar_edicion(
     imprescindibles_est = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + columnas_pv_totales
     _, ausentes_est = columnas_disponibles(
         ruta_estudiantes,
-        list(dict.fromkeys(imprescindibles_est + COLUMNAS_CONTEXTO_ESTUDIANTE)),
+        list(dict.fromkeys(
+            imprescindibles_est
+            + [c for c in COLUMNAS_CONTEXTO_ESTUDIANTE if c not in COLUMNAS_TREND]
+        )),
         alias_est,
     )
     basicas_ausentes = [c for c in COLUMNAS_BASICAS if c in ausentes_est]
@@ -653,6 +633,8 @@ def procesar_edicion(
         df_estudiantes = calcular_senwt(df_estudiantes)
     df_estudiantes = _normalizar_ids(df_estudiantes)
     df_estudiantes = _objetos_a_string(df_estudiantes)
+    if ruta_escs_trend:
+        df_estudiantes = anadir_indices_trend(df_estudiantes, año, ruta_escs_trend)
     # assign evita la fragmentación del DataFrame (PerformanceWarning con cientos de columnas)
     df_estudiantes = df_estudiantes.assign(EDICION=año, DOMINIO_PRINCIPAL=cfg['dominio_principal'])
 
@@ -713,7 +695,7 @@ def procesar_edicion(
     return df_estudiantes, df_colegios
 
 
-# 7. Validación y documentación de las tablas maestras
+# 6. Validación y documentación de las tablas maestras
 
 def validar_tablas(
     df_est: pd.DataFrame,
@@ -774,6 +756,10 @@ def generar_diccionario_columnas(
                 filas.append((año, tabla, inverso.get(nombre, nombre), nombre, etiqueta or ''))
             filas.append((año, tabla, 'EDICION', '', 'Añadida por el pipeline: año de la edición'))
         filas.append((año, 'estudiantes', 'DOMINIO_PRINCIPAL', '', 'Añadida por el pipeline: dominio focal del ciclo'))
+        for c in INDICES_TREND:
+            origen = 'copia del original (2022 es la escala de referencia)' if año not in CICLO_ESCS_TREND \
+                else 'reescalado por la OCDE (escs_trend.csv), comparable con 2022'
+            filas.append((año, 'estudiantes', f'{c}_TREND', '', f'Añadida por el pipeline: {c} {origen}'))
         if not any(f[0] == año and f[1] == 'estudiantes' and f[2] == 'SENWT' for f in filas):
             filas.append((año, 'estudiantes', 'SENWT', '',
                           'Añadida por el pipeline: peso senado (W_FSTUWT reescalado, cada país suma 5000)'))
