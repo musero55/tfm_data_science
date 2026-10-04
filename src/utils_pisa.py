@@ -101,7 +101,7 @@ def puntuaciones_pisa_estratos(df, competencia,col_peso='W_FSTUWT'):
     
     return df_estratos
 
-def promedio_ponderado_indicadores_estrato(datos, variables, columna_peso, claves_agrupacion=None,):
+def promedio_ponderado_indicadores_agrupado(datos, variables, columna_peso, claves_agrupacion=None,):
     """
     Agrega indicadores ponderados por una o varias claves.
     datos: datos no separados por estratos
@@ -110,8 +110,14 @@ def promedio_ponderado_indicadores_estrato(datos, variables, columna_peso, clave
     #Crea un dataframe vacio que contiene las claves de agrupación 
     resultado = datos[claves_agrupacion].drop_duplicates().reset_index(drop=True)
 
-    #Bucle para calcular el promedio ponderado de cada variable
+    
+# Bucle para calcular el promedio ponderado de cada variable
     for variable in variables:
+        
+        # Evitamos multiplicar la columna de peso por si misma 
+        if variable == columna_peso:
+            continue
+ 
 
         #Localiza los datos válidos (no nulos) para la variable especifica 
         datos_validos = datos.loc[datos[variable].notna(),claves_agrupacion + [variable, columna_peso]].copy()
