@@ -6,44 +6,35 @@ import pickle
 import os
 import random
 
-def puntuaciones_pisa_pais(df, competencia, col_pais='CNT', col_peso='W_FSTUWT'):
+def puntuaciones_pisa_pais(df, competencia, col_peso='W_FSTUWT'):
     """
-    Calcula las medias ponderadas de los 10 Valores Plausibles (PV) por país,
-    la puntuación media final y el error de imputación (varianza).
+    Calcula la media ponderada de los valores plausibles por país (CNT).
+    Usa la misma lógica que puntuaciones_pisa_estratos pero agrupando solo por CNT.
     
     Argumentos:
         df (pd.DataFrame): Dataset crudo de PISA.
         competencia (str): Sufijo de la competencia (ej. 'READ', 'MATH', 'SCIE').
+        col_peso (str): Columna de pesos para la ponderación.
     """
-    medias_pv = []
+    # Identificar las columnas de valores plausibles
+    cols_pv = [col for col in df.columns if col.startswith('PV') and col.endswith(competencia)]
     
-    # Calculamos una media ponderada por cada valor de PV presente
-    for i in range(1, 11):
-        col_actual = f'PV{i}{competencia}'
-
-        #Se crean 10 series de Pandas con indice del pais y valor la media ponderada de PV(i)
-        media_ponderada = df.groupby(col_pais).apply(
-            lambda x: (x[col_actual] * x[col_peso]).sum() / x[col_peso].sum(),
-            include_groups=False
-        )
-
-        #Se registra cada Series en un array
-        medias_pv.append(media_ponderada)
+    if not cols_pv:
+        raise ValueError(f"No se encontraron valores plausibles para {competencia}.")
+        
+    # Calcular la media de los PVs para cada alumno
+    media_alumno = df[cols_pv].mean(axis=1)
     
-    # Se genera un dataframe unico cuyo indice son los CNT y las columnas son las medias ponderadas PV
-    df_pv_consolidado = pd.concat(medias_pv, axis=1,)
+    # Agrupar por país y calcular la media ponderada
+    grouped = df.groupby('CNT')
     
-    # Calcular métricas finales aggregadas
-    puntuacion_final = df_pv_consolidado.mean(axis='columns')   #Media del conjunto PV
-    error_imputacion = df_pv_consolidado.var(axis='columns')    #Varianza de las medias
+    suma_notas = grouped.apply(lambda x: (media_alumno.loc[x.index] * x[col_peso]).sum())
+    suma_pesos = grouped[col_peso].sum()
     
-    # Se construye el dataframe final con la media PV y error de imputacion por pais
-    df_resultados = pd.DataFrame({
-        f'media_{competencia.lower()}_pisa': puntuacion_final,
-        'varianza_imputacion': error_imputacion
-    })
+    # Generar el dataframe de salida
+    df_paises = (suma_notas / suma_pesos).reset_index(name=f'media_{competencia.lower()}_pais')
     
-    return df_resultados.reset_index()
+    return df_paises
 
 def puntuaciones_pisa_alumnos(df, competencia):
     """
