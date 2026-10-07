@@ -23,6 +23,7 @@ __pycache__/
 Thumbs.db
 
 # Entornos virtuales
+.env
 .venv/
 env/
 venv/
