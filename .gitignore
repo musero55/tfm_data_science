@@ -6,6 +6,7 @@ manuals/
 data/raw/
 data/intermediate/datos_anuales/
 data/intermediate/datos_anuales_imputados/
+agente_llm/temp_plots
 
 #Datos temporales
 .ipynb_checkpoints/
