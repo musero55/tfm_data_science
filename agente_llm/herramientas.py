@@ -11,7 +11,7 @@ from pathlib import Path
 import shap
 from langchain.tools import tool
 import gradio as gr
-
+from adjustText import adjust_text
 
 matplotlib.use('Agg')
 
@@ -477,18 +477,35 @@ def generar_grafico_datos_pisa(codigo_plot: str) -> str:
     Entorno predefinido disponible dentro del código:
     - 'df_pisa_cnt': DataFrame agregado. IMPORTANTE: La columna de países se llama 'CNT'.
     - 'df_pisa_strat': DataFrame estratificado. IMPORTANTE: La columna de países se llama 'CNT'.
+    - 'columnas_esperadas': Lista con los nombres de las features de entrada del modelo.
     - 'explainer': Objeto TreeExplainer de SHAP del modelo XGBoost.
     - 'shap', 'plt', 'sns', 'pd', 'np': Librerías importadas listas para usar.
+    - 'adjust_text': Función de ajuste de etiquetas de texto (si está disponible, úsala para evitar solapamientos).
 
     REGLAS ESTRICTAS PARA 'codigo_plot':
     1. Debe ser código Python ejecutable que construya la figura.
     2. Si usas funciones de 'shap.plots.*', incluye SIEMPRE el argumento 'show=False'.
     3. NO uses plt.show().
     4. NO uses plt.savefig() (el guardado se gestiona internamente).
+
+    BUENAS PRÁCTICAS DE DISEÑO Y COMPOSICIÓN:
+    - Márgenes dinámicos: Si colocas textos o etiquetas sobre puntos/barras, añade margen con 
+      plt.margins(x=0.15, y=0.15) para evitar que los textos se corten en los bordes.
+    - Etiquetas en puntos (scatter plots):
+      * No etiquetes todos los países si son muchos; selecciona el Top/Bottom o el país de interés.
+      * Si 'adjust_text' no es None, úsalo: 
+        texts = [plt.text(x, y, label) for x, y, label in zip(xs, ys, labels)]
+        adjust_text(texts, arrowprops=dict(arrowstyle="->", color='gray', lw=0.5))
+    - Eje X saturado: Si hay muchos países o categorías en el eje X, rota siempre las etiquetas:
+      plt.xticks(rotation=45, ha='right').
+    - Leyendas: Si la leyenda tapa datos, colócala fuera del gráfico:
+      plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left').
+    - Títulos y ejes: Incluye siempre plt.title(), plt.xlabel() y plt.ylabel() legibles.
     """
     try:
-        plt.clf()#Limpieza del lienzo
-        plt.figure(figsize=(9, 5))
+        plt.clf()  # Limpieza del lienzo
+        sns.set_theme(style="whitegrid")  # Estilo limpio y consistente
+        plt.figure(figsize=(10, 5.5))
 
         scope_local = {
             "columnas_esperadas": columnas_esperadas,
@@ -499,21 +516,22 @@ def generar_grafico_datos_pisa(codigo_plot: str) -> str:
             "plt": plt,
             "sns": sns,
             "np": np,
-            "pd": pd
+            "pd": pd,
+            "adjust_text": adjust_text
         }
 
-        # Ejecución controlada
+        # Ejecución controlada del código generado por el LLM
         exec(codigo_plot, {}, scope_local)
 
-        # Nombre único para evitar sobrescribir gráficos generados simultáneamente.
+        # Nombre único de archivo en disco
         nombre_archivo = f"plot_{time.time_ns()}.png"
         ruta_absoluta = DIR_IMAGENES / nombre_archivo
         
-        plt.tight_layout()
+        # Guardado asegurando que ningún elemento quede fuera del encuadre
         plt.savefig(ruta_absoluta, dpi=180, bbox_inches='tight')
         plt.close('all')
 
-        #Ruta de la imagen en formato markdown
+        # Formato Markdown compatible para la interfaz
         markdown_imagen = f"![Gráfico PISA](<{ruta_absoluta.as_posix()}>)"
 
         return (
