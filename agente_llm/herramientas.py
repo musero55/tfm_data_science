@@ -22,8 +22,7 @@ matplotlib.use('Agg')
 DIR_IMAGENES = Path(os.getcwd()) / "temp_plots"
 DIR_IMAGENES.mkdir(parents=True, exist_ok=True)
 
-# .resolve() elimina cualquier ambigüedad de la ruta en Windows
-DIR_IMAGENES_RESOLVED = DIR_IMAGENES.resolve()
+
 
 if '__file__' in locals():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +53,7 @@ PROMPT_SISTEMA = """Eres un asistente de investigación de élite especializado 
 
 Tus responsabilidades:
 - Analizar resultados educativos, factores socioeconómicos e inferencias de los modelos ML del proyecto.
+- Apoyar tus resutados utilizando las gráficas correspondientes 
 - Usar de manera precisa las herramientas a tu disposición cuando se requieran datos o predicciones.
 
 GUARDRAILS Y RESTRICCIONES TEMÁTICAS (Estricto):
@@ -64,6 +64,7 @@ GUARDRAILS Y RESTRICCIONES TEMÁTICAS (Estricto):
 
 REGLAS DE DATOS TEMPORALES:
 - La base de datos contiene EXCLUSIVAMENTE información de las ediciones: 2012, 2015, 2018 y 2022.
+- Todos los paises de la base de datos pertenencen a la OECD
 - NO existen datos anteriores a 2012 ni posteriores a 2022. Si el usuario pregunta por la evolución general, limítate estrictamente a ese rango de 4 ediciones.
 - Para consultas de evolución o tendencias de un país, usa la herramienta 'analizar_tendencia_temporal'.
 - Recuerda convertir los nombres de países a su código ISO-3 (ej. España -> 'ESP').
@@ -212,37 +213,50 @@ def consultar_estadisticas_cruzadas_pisa(
         
     except Exception as e:
         return f"Error al ejecutar la estadística cruzada: {str(e)}"
+
     
 # ==============================================================================
 # HERRAMIENTAS DE MODELADO E INFERENCIA (XGBoost Matemáticas)
 # ==============================================================================
+#TODO Cambiar el prompt cuando tenga los tres modelos hechos, para que eliga el modelo de asignatura a usar
 @tool
 def obtener_importancia_variables() -> str:
     """
-    Retorna la importancia real de cada variable (Feature Importance) calculada directamente desde el modelo XGBoost de Matemáticas.
+    Devuelve la importancia real de cada variable (Feature Importance) calculada directamente desde el modelo XGBoost de Matemáticas.
     """
-    #TODO Cambiar el prompt cuando tenga los tres modelos hechos, para que eliga el modelo de asignatura a usar
+
     try:
+        #Obtenemos las importancias
         importancias = modelo_xgb_math.feature_importances_
-        ranking = sorted(zip(columnas_esperadas, importancias), key=lambda x: x[1], reverse=True)
-        
+
+        #Asignamos las importancias a las columnas 
+        pesos = dict(zip(columnas_esperadas, importancias))
+
+        #Ordenamos las claves, segun su valor en el diccionario ( nos quedamos con las 10 mas relevantes)
+        top_cols = sorted(pesos, key=pesos.get, reverse=True)[:10]
+
         texto_resultado = "Importancia global de variables en el modelo predictivo de Matemáticas:\n"
-        for i, (col, imp) in enumerate(ranking[:10], 1): # Top 10
-            texto_resultado += f"{i}. {col}: {imp:.4f}\n"
+
+        #Adjuntamos al texto resultado las variables de mayor importancia con sus pesos 
+        for i, col in enumerate(top_cols, 1):
+            texto_resultado += f"{i}. {col}: {pesos[col]:.4f}\n"
             
         return texto_resultado
+    
     except Exception as e:
         return f"Error al obtener la importancia de variables: {str(e)}"
 
+#TODO Modificar el prompt cuando tenga los tres modelos de las notas para poder elegir el modelo a usar
 @tool
 def explicador_modelo(codigo_pais: str) -> str:
     """
     Calcula la predicción media en Matemáticas para un país y utiliza SHAP para explicar qué variables sumaron o restaron puntos.
     IMPORTANTE: El input DEBE ser el código ISO de 3 letras del país (ej. 'ESP').
     """
+  
     try:
         codigo_pais = codigo_pais.upper()
-        # Se filtra sobre df_pisa_strat porque contiene las categóricas necesarias para el encoder
+        # Filtramos sobre df_pisa_strat porque contiene las categóricas necesarias para el encoder
         df_pais = df_pisa_strat[df_pisa_strat['CNT'] == codigo_pais]
         
         if df_pais.empty:
@@ -269,13 +283,19 @@ def explicador_modelo(codigo_pais: str) -> str:
         
         valor_base = explainer.expected_value
         if isinstance(valor_base, (list, np.ndarray)):
+
             valor_base = valor_base[0]
 
-        impactos = list(zip(columnas_esperadas, shap_medio_pais))
-        impactos_ordenados = sorted(impactos, key=lambda x: abs(x[1]), reverse=True)
-        
-        variables_suman = [f"{col} (+{val:.2f})" for col, val in impactos_ordenados if val > 0][:3]
-        variables_restan = [f"{col} ({val:.2f})" for col, val in impactos_ordenados if val < 0][:3]
+        #Convertimos los valores SHAP medios a una serie de pandas con las columnas como indices con sus respectivos valores
+        s_impactos = pd.Series(shap_medio_pais, index=columnas_esperadas)
+
+        # Las 3 que más suman (valores positivos más altos)
+        top_suman = s_impactos[s_impactos > 0].nlargest(3)
+        variables_suman = [f"{col} (+{val:.2f})" for col, val in top_suman.items()]
+
+        # Las 3 que más restan (valores negativos más bajos)
+        top_restan = s_impactos[s_impactos < 0].nsmallest(3)
+        variables_restan = [f"{col} ({val:.2f})" for col, val in top_restan.items()]
 
         return (
             f"Análisis Predictivo SHAP para {codigo_pais} (Matemáticas):\n"
@@ -288,8 +308,9 @@ def explicador_modelo(codigo_pais: str) -> str:
         return f"Error al ejecutar el explicador del modelo: {str(e)}"
 
 
+#TODO Cuando tenga los modelos para el ressto de asignaturas modificar el prompt y el código 
 @tool
-def simular_escenario_pais(codigo_pais: str, modificaciones: dict) -> str:
+def simular_escenario_pais_pisa(codigo_pais: str, modificaciones: dict) -> str:
     """
     Realiza una simulación hipotética (Ceteris Paribus) sobre el rendimiento de un país en Matemáticas.
     Toma el perfil real del país y sobrescribe únicamente las variables especificadas en 'modificaciones', 
@@ -318,7 +339,7 @@ def simular_escenario_pais(codigo_pais: str, modificaciones: dict) -> str:
             nombres_nuevos = encoder_original.get_feature_names_out(columnas_categoricas)
             df_cat = pd.DataFrame(matriz_codificada, columns=nombres_nuevos, index=df_temp.index)
             
-            # Unir con numéricas y alinear columnas esperadas por el modelo
+            # Unir con numéricas y alinear columnas esperadas por el modelo (Sin target)
             df_num = df_temp.drop(columns=columnas_categoricas).select_dtypes(include=[np.number])
             df_completo = pd.concat([df_num, df_cat], axis=1)
             df_modelo = df_completo.reindex(columns=columnas_esperadas, fill_value=0)
@@ -362,7 +383,7 @@ def simular_escenario_pais(codigo_pais: str, modificaciones: dict) -> str:
     except Exception as e:
         return f"Error crítico en la simulación: {str(e)}"
 
-#TODO Revisar esta funcion
+#TODO Revisar esta funcion (Especificar que los años deben coincidir?)
 @tool
 def calcular_correlacion_pisa(columna_x: str, columna_y: str) -> str:
     """
@@ -401,7 +422,7 @@ def calcular_correlacion_pisa(columna_x: str, columna_y: str) -> str:
 # En lugar de hacer que el LLM llame a la función general cuatro veces (una por año), esta herramienta busca la "raíz" de la variable (ej. media_math_pais) y la concatena dinámicamente con los sufijos _2012, _2015, _2018 y _2022.
 
 @tool
-def analizar_tendencia_temporal(codigo_pais: str, variable_base: str) -> str:
+def analizar_tendencia_temporal_pisa(codigo_pais: str, variable_base: str) -> str:
     """
     Extrae la evolución temporal histórica de una métrica para un país concreto.
     Rango temporal disponible en el proyecto: únicamente ediciones 2012, 2015, 2018 y 2022.
@@ -441,14 +462,14 @@ def analizar_tendencia_temporal(codigo_pais: str, variable_base: str) -> str:
     except Exception as e:
         return f"Error al consultar la tendencia temporal: {str(e)}"
 
+#TODO Faltan las predicciones a futuro, pensar como se haría
 
 # ==============================================================================
 # HERRAMIENTAS DE VISUALIZACION
 # ==============================================================================
 
-#TODO  Revisar
 @tool
-def generar_grafico_datos(codigo_plot: str) -> str:
+def generar_grafico_datos_pisa(codigo_plot: str) -> str:
     """
     Genera y guarda una visualización estadística o gráfica explicativa de Machine Learning (SHAP).
     El LLM debe elegir de forma autónoma el mejor gráfico según la consulta.
@@ -466,10 +487,11 @@ def generar_grafico_datos(codigo_plot: str) -> str:
     4. NO uses plt.savefig() (el guardado se gestiona internamente).
     """
     try:
-        plt.clf()
+        plt.clf()#Limpieza del lienzo
         plt.figure(figsize=(9, 5))
 
         scope_local = {
+            "columnas_esperadas": columnas_esperadas,
             "df_pisa_cnt": df_pisa_cnt,
             "df_pisa_strat": df_pisa_strat,
             "explainer": explainer,
@@ -485,12 +507,13 @@ def generar_grafico_datos(codigo_plot: str) -> str:
 
         # Nombre único para evitar sobrescribir gráficos generados simultáneamente.
         nombre_archivo = f"plot_{time.time_ns()}.png"
-        ruta_absoluta = DIR_IMAGENES_RESOLVED / nombre_archivo
+        ruta_absoluta = DIR_IMAGENES / nombre_archivo
         
         plt.tight_layout()
         plt.savefig(ruta_absoluta, dpi=180, bbox_inches='tight')
         plt.close('all')
 
+        #Ruta de la imagen en formato markdown
         markdown_imagen = f"![Gráfico PISA](<{ruta_absoluta.as_posix()}>)"
 
         return (
@@ -504,10 +527,11 @@ def generar_grafico_datos(codigo_plot: str) -> str:
         return f"Error de Python al ejecutar tu código: {str(e)}. Corrige tu código e inténtalo de nuevo."
     
 lista_herramientas_pisa = [consultar_datos_pisa_pais, 
-                           consultar_estadisticas_generales_pisa, 
+                           consultar_estadisticas_generales_pisa,
+                           consultar_estadisticas_cruzadas_pisa, 
                            obtener_importancia_variables, 
                            explicador_modelo, 
-                           simular_escenario_pais,
+                           simular_escenario_pais_pisa,
                            calcular_correlacion_pisa,
-                           analizar_tendencia_temporal,
-                           generar_grafico_datos]
+                           analizar_tendencia_temporal_pisa,
+                           generar_grafico_datos_pisa]
