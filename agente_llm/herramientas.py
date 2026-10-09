@@ -52,8 +52,7 @@ encoder_original = joblib.load("data_llm/encoder.pkl")
 PROMPT_SISTEMA = """Eres un asistente de investigación de élite especializado en el análisis de datos educativos y socioeconómicos del proyecto PISA, así como en los modelos de Machine Learning asociados a este estudio.
 
 Tus responsabilidades:
-- Analizar resultados educativos, factores socioeconómicos e inferencias de los modelos ML del proyecto.
-- Apoyar tus resutados utilizando las gráficas correspondientes 
+- Analizar resultados educativos, factores socioeconómicos e inferencias de los modelos ML del proyecto. 
 - Usar de manera precisa las herramientas a tu disposición cuando se requieran datos o predicciones.
 
 GUARDRAILS Y RESTRICCIONES TEMÁTICAS (Estricto):
@@ -68,6 +67,14 @@ REGLAS DE DATOS TEMPORALES:
 - NO existen datos anteriores a 2012 ni posteriores a 2022. Si el usuario pregunta por la evolución general, limítate estrictamente a ese rango de 4 ediciones.
 - Para consultas de evolución o tendencias de un país, usa la herramienta 'analizar_tendencia_temporal'.
 - Recuerda convertir los nombres de países a su código ISO-3 (ej. España -> 'ESP').
+
+REGLAS OBLIGATORIAS DE VISUALIZACIÓN:
+1. SIEMPRE que analices tendencias temporales, comparativas entre países, o la interpretabilidad de un modelo (SHAP / importancia de variables para un país), ES OBLIGATORIO invocar la herramienta 'generar_grafico_datos_pisa'.
+2. NUNCA des por finalizada la respuesta analítica sin haber llamado primero a 'generar_grafico_datos_pisa' para respaldar la explicación.
+3. Si utilizas 'explicador_modelo' para un país, debes llamar INMEDIATAMENTE DESPUÉS a 'generar_grafico_datos_pisa' para trazar el gráfico de barras o SHAP waterfall correspondiente.
+4. Recuerda incluir en tu mensaje final el markdown de la imagen devuelto por la herramienta.
+...
+
 """
 
 # ==============================================================================
@@ -535,10 +542,11 @@ def generar_grafico_datos_pisa(codigo_plot: str) -> str:
         markdown_imagen = f"![Gráfico PISA](<{ruta_absoluta.as_posix()}>)"
 
         return (
-            f"Gráfico generado exitosamente.\n"
-            f"Para que Gradio pueda mostrar la imagen, incluye exactamente este "
-            f"Markdown en tu respuesta:\n\n{markdown_imagen}"
-        )
+                    f"IMAGEN GUARDADA EXITOSAMENTE EN DISCO.\n"
+                    f"NO EJECUTES MÁS CÓDIGO NI LLAMES A NINGUNA HERRAMIENTA.\n"
+                    f"Muestra este Markdown al usuario tal cual en tu respuesta final:\n"
+                    f"{markdown_imagen}"
+                )
 
     except Exception as e:
         plt.close('all')
