@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
 
 import pandas as pd
@@ -70,11 +71,11 @@ SERIES_OCDE = {
     },
     'estadisticas_referencia': {
         'dataflow': 'DSD_EAG_UOE_FIN_ANNEX@DF_UOE_FIN_ANNEX', 'version': '3.2',
-        'dims': None,   # todas (PIB, PIB per cápita PPP, factor PPP, deflactor, población, gasto público total)
+        'dims': [None] * 4,   # todas (PIB, PIB per cápita PPP, factor PPP, deflactor, población, gasto público total)
     },
     'horas_docencia_legales': {
         'dataflow': 'DSD_EAG_WT_TREND@DF_ALL', 'version': '2.0',
-        'dims': None,
+        'dims': [None] * 5,
     },
     # Cómo se gasta: tipo de gasto (CORE = servicios básicos de enseñanza, ASERV = servicios auxiliares)
     'gasto_alumno_tipo': {
@@ -99,7 +100,7 @@ SERIES_OCDE = {
         'dataflow': 'DSD_EAG_UOE_NON_FIN_PERS@DF_UOE_NF_PERS_STR', 'version': '1.1',
         'dims': [None] * 14,
     },
-    'tamano_de_clase': {
+    'tamaño_de_clase': {
         'dataflow': 'DSD_EAG_UOE_NON_FIN_PERS@DF_UOE_NF_PERS_CLS', 'version': '1.1',
         'dims': [None] * 14,
     },
@@ -168,9 +169,9 @@ def descargar_eurostat(ruta_carpeta: str, inicio: int = 2010) -> str:
     `<ruta_carpeta>/gasto_publico_por_alumno_eurostat.csv`
     (columnas: pais, año, nivel, unidad, valor). Solo países de la UE."""
     geos = ''.join(f'&geo={g}' for g in GEO_EUROSTAT.values())
-    anios = ''.join(f'&time={a}' for a in range(inicio, 2024))
+    años = ''.join(f'&time={a}' for a in range(inicio, 2024))
     url = (f'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{EUROSTAT_GASTO_ALUMNO}'
-           f'?format=JSON&lang=EN{geos}{anios}')
+           f'?format=JSON&lang=EN{geos}{años}')
     j = json.loads(_get(url))
     ids, tam = j['id'], j['size']
     cat = {d: {p: c for c, p in j['dimension'][d]['category']['index'].items()} for d in ids}   # posicion -> codigo
@@ -211,6 +212,84 @@ def descargar_todo(ruta_carpeta: str, forzar: bool = False) -> dict[str, str]:
         descargar_eurostat(ruta_carpeta)
     rutas['gasto_publico_por_alumno_eurostat'] = ruta
     return rutas
+
+
+# ---------------------------------------------------------------- enlaces y comprobación
+
+URL_EXPLORADOR = 'https://data-explorer.oecd.org/vis'
+PORTAL_BM = f'https://data.worldbank.org/indicator/{PIB_BANCO_MUNDIAL}'
+PORTAL_EUROSTAT = f'https://ec.europa.eu/eurostat/databrowser/view/{EUROSTAT_GASTO_ALUMNO}/default/table?lang=en'
+
+
+def url_explorador(dataflow: str, version: str) -> str:
+    """Página del dataflow en el OECD Data Explorer (donde se ven y descargan los datos)."""
+    return (f"{URL_EXPLORADOR}?df%5Bds%5D=DisseminateFinalDMZ&df%5Bid%5D={dataflow.replace('@', '%40')}"
+            f"&df%5Bag%5D={AGENCIA_EDU}&df%5Bvs%5D={version}")
+
+
+def enlaces_fuentes() -> pd.DataFrame:
+    """Una fila por fichero descargado: proveedor, portal donde se ven los datos y consulta
+    de API de muestra (España, último dato) que devuelve el mismo formato que la descarga."""
+    filas = [{'serie': n, 'fichero': f'{n}.csv', 'proveedor': 'OCDE', 'dataflow': s['dataflow'], 'version': s['version'],
+              'formato': 'csv', 'portal': url_explorador(s['dataflow'], s['version']),
+              'api': url_oecd(s, ['ESP'], 2000) + '&lastNObservations=1'} for n, s in SERIES_OCDE.items()]
+    filas.append({'serie': 'pib_per_capita_ppp', 'fichero': 'pib_per_capita_ppp.csv', 'proveedor': 'Banco Mundial',
+                  'dataflow': PIB_BANCO_MUNDIAL, 'version': 'API v2', 'formato': 'wb', 'portal': PORTAL_BM,
+                  'api': f'{URL_BANCO_MUNDIAL}/country/ESP/indicator/{PIB_BANCO_MUNDIAL}?format=json&date=2022'})
+    filas.append({'serie': 'gasto_publico_por_alumno_eurostat', 'fichero': 'gasto_publico_por_alumno_eurostat.csv',
+                  'proveedor': 'Eurostat', 'dataflow': EUROSTAT_GASTO_ALUMNO, 'version': '-', 'formato': 'eurostat',
+                  'portal': PORTAL_EUROSTAT,
+                  'api': f'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{EUROSTAT_GASTO_ALUMNO}'
+                         '?format=JSON&lang=EN&geo=ES&time=2020'})
+    return pd.DataFrame(filas)
+
+
+def _estado_api(url: str, formato: str) -> str:
+    try:
+        datos = _get(url, 120)
+        if formato == 'csv':
+            n = max(len(datos.decode('utf-8').strip().splitlines()) - 1, 0)
+        elif formato == 'wb':
+            n = len(json.loads(datos)[1])
+        else:
+            n = len(json.loads(datos)['value'])
+        return f'ok ({n} filas)' if n else 'sin datos'
+    except urllib.error.HTTPError as e:
+        return 'límite de consultas (429): reintentar más tarde' if e.code == 429 else f'ERROR: {e}'
+    except Exception as e:
+        return f'ERROR: {e}'
+
+
+def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
+    """Comprueba cada enlace de `enlaces_fuentes`: el portal de la OCDE se valida contra su
+    catálogo (la web es una SPA y siempre responde 200); los demás portales, con una petición
+    HTTP; la API, pidiendo la muestra (`api=False` la omite: la OCDE limita las consultas por hora).
+    Devuelve la tabla con `portal_ok` y `api_ok`."""
+    import xml.etree.ElementTree as ET
+    t = enlaces_fuentes()
+    ns = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
+    try:
+        raiz = ET.fromstring(_get(f'https://sdmx.oecd.org/public/rest/dataflow/{AGENCIA_EDU}', 120))
+        catalogo = {d.get('id'): d.get('version') for d in raiz.iter(ns + 'Dataflow')}
+    except Exception as e:
+        catalogo = None
+        print(f'No se pudo leer el catálogo de la OCDE: {e}')
+
+    def portal_ok(f):
+        if f['proveedor'] == 'OCDE':
+            if catalogo is None:
+                return 'sin comprobar'
+            v = catalogo.get(f['dataflow'])
+            return 'ok' if v == f['version'] else (f'versión actual {v}' if v else 'no existe')
+        try:
+            _get(f['portal'], 60)
+            return 'ok'
+        except Exception as e:
+            return f'ERROR: {e}'
+
+    t['portal_ok'] = [portal_ok(f) for _, f in t.iterrows()]
+    t['api_ok'] = [_estado_api(f['api'], f['formato']) if api else 'sin comprobar' for _, f in t.iterrows()]
+    return t
 
 
 def cargar_oecd(ruta_csv: str) -> pd.DataFrame:

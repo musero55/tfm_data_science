@@ -487,7 +487,7 @@ def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
     return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
 
 
-def anadir_indices_trend(df: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
+def añadir_indices_trend(df: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
     """Añade `ESCS_TREND`, `HISEI_TREND`, `HOMEPOS_TREND` y `PAREDINT_TREND` desde
     `escs_trend.csv` de la OCDE, uniendo por país, centro y alumno. Los índices
     originales no se tocan. 2022 no está en el csv (su escala es la de referencia):
@@ -560,7 +560,7 @@ def procesar_edicion(
     * `columnas_*=None`: todas las columnas originales, con los nombres canónicos
       de `alias_*`. Una lista restringe la lectura a esas (más las imprescindibles).
     * Avisa de las columnas de `COLUMNAS_CONTEXTO_*` que el fichero no tiene.
-    * Con `ruta_escs_trend`, añade las columnas `*_TREND` (ver `anadir_indices_trend`).
+    * Con `ruta_escs_trend`, añade las columnas `*_TREND` (ver `añadir_indices_trend`).
     * Con `usar_checkpoint_si_existe`, si los parquets ya existen se cargan sin
       releer el origen (ponlo a False si cambias `paises` o `fraccion`).
     """
@@ -634,7 +634,7 @@ def procesar_edicion(
     df_estudiantes = _normalizar_ids(df_estudiantes)
     df_estudiantes = _objetos_a_string(df_estudiantes)
     if ruta_escs_trend:
-        df_estudiantes = anadir_indices_trend(df_estudiantes, año, ruta_escs_trend)
+        df_estudiantes = añadir_indices_trend(df_estudiantes, año, ruta_escs_trend)
     # assign evita la fragmentación del DataFrame (PerformanceWarning con cientos de columnas)
     df_estudiantes = df_estudiantes.assign(EDICION=año, DOMINIO_PRINCIPAL=cfg['dominio_principal'])
 
