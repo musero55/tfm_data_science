@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from agente_pisa import agente_pisa  # <-- Tu agente compilado
 
-st.set_page_config(page_title="Agente PISA - TFM", layout="wide")
+st.set_page_config(page_title="Agente PISA ", layout="wide")
 st.title("📊 Asistente de Investigación PISA")
 
 # 1. Mantener una sesión persistente para la memoria de LangGraph
@@ -22,21 +22,30 @@ def renderizar_mensaje(contenido: str):
     patron_md = r'!\[.*?\]\((?:/gradio_api/file=)?([A-Za-z]:[^\)]+)\)'
     patron_html = r'<img\s+[^>]*src=[\'"](?:/gradio_api/file=)?([A-Za-z]:[^\'"]+)[\'"][^>]*>'
     
-    rutas_imagenes = re.findall(patron_md, contenido) + re.findall(patron_html, contenido)
+    coincidencias = re.findall(patron_md, contenido) + re.findall(patron_html, contenido)
     
-    # Limpiamos las etiquetas de imagen del texto para evitar el fallo WinError 123
+    # 1. Deduplicar rutas manteniendo el orden de aparición
+    rutas_imagenes = list(dict.fromkeys(r.strip() for r in coincidencias))
+    
+    # Limpiamos las etiquetas de imagen del texto para evitar fallos de renderizado
     texto_limpio = re.sub(r'!\[.*?\]\([^\)]+\)', '', contenido)
     texto_limpio = re.sub(r'<img\s+[^>]*>', '', texto_limpio)
     
-    # 1. Renderizamos el texto explicativo
+    # 2. Renderizar el texto explicativo
     if texto_limpio.strip():
         st.markdown(texto_limpio)
         
-    # 2. Renderizamos las imágenes encontradas de forma nativa
+    # 3. Renderizar imágenes con tamaño controlado
     for ruta in rutas_imagenes:
-        p = Path(ruta.strip())
+        p = Path(ruta)
         if p.exists():
-            st.image(str(p), caption="Gráfico generado", use_container_width=True)
+            # Opción A: ancho fijo controlado (ajusta entre 600 y 750 según prefieras)
+            # st.image(str(p), caption="Gráfico generado", width=650)
+            
+            # Opción B (alternativa): si prefieres centrarlo en la columna del chat
+            col_izq, col_centro, col_der = st.columns([1, 4, 1])
+            with col_centro:
+                st.image(str(p), caption="Gráfico generado", use_container_width=True)
 
 # Dibujar el historial previo en pantalla
 for msg in st.session_state.mensajes_chat:
