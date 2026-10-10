@@ -927,6 +927,10 @@
 2012,colegios,VER_SCQ,VER_SCQ,Date of the database creation
 2012,colegios,EDICION,,Añadida por el pipeline: año de la edición
 2012,estudiantes,DOMINIO_PRINCIPAL,,Añadida por el pipeline: dominio focal del ciclo
+2012,estudiantes,ESCS_TREND,,"Añadida por el pipeline: ESCS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2012,estudiantes,HISEI_TREND,,"Añadida por el pipeline: HISEI reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2012,estudiantes,HOMEPOS_TREND,,"Añadida por el pipeline: HOMEPOS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2012,estudiantes,PAREDINT_TREND,,"Añadida por el pipeline: PAREDINT reescalado por la OCDE (escs_trend.csv), comparable con 2022"
 2012,estudiantes,SENWT,,"Añadida por el pipeline: peso senado (W_FSTUWT reescalado, cada país suma 5000)"
 2015,estudiantes,CNTRYID,CNTRYID,Country Identifier
 2015,estudiantes,CNT,CNT,Country code 3-character
@@ -2125,6 +2129,10 @@
 2015,colegios,VER_DAT,VER_DAT,Date of the database creation
 2015,colegios,EDICION,,Añadida por el pipeline: año de la edición
 2015,estudiantes,DOMINIO_PRINCIPAL,,Añadida por el pipeline: dominio focal del ciclo
+2015,estudiantes,ESCS_TREND,,"Añadida por el pipeline: ESCS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2015,estudiantes,HISEI_TREND,,"Añadida por el pipeline: HISEI reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2015,estudiantes,HOMEPOS_TREND,,"Añadida por el pipeline: HOMEPOS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2015,estudiantes,PAREDINT_TREND,,"Añadida por el pipeline: PAREDINT reescalado por la OCDE (escs_trend.csv), comparable con 2022"
 2018,estudiantes,CNTRYID,CNTRYID,Country Identifier
 2018,estudiantes,CNT,CNT,Country code 3-character
 2018,estudiantes,CNTSCHID,CNTSCHID,Intl. School ID
@@ -3445,6 +3453,10 @@
 2018,colegios,BOOKID,BOOKID,
 2018,colegios,EDICION,,Añadida por el pipeline: año de la edición
 2018,estudiantes,DOMINIO_PRINCIPAL,,Añadida por el pipeline: dominio focal del ciclo
+2018,estudiantes,ESCS_TREND,,"Añadida por el pipeline: ESCS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2018,estudiantes,HISEI_TREND,,"Añadida por el pipeline: HISEI reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2018,estudiantes,HOMEPOS_TREND,,"Añadida por el pipeline: HOMEPOS reescalado por la OCDE (escs_trend.csv), comparable con 2022"
+2018,estudiantes,PAREDINT_TREND,,"Añadida por el pipeline: PAREDINT reescalado por la OCDE (escs_trend.csv), comparable con 2022"
 2022,estudiantes,CNT,CNT,Country code 3-character
 2022,estudiantes,CNTRYID,CNTRYID,Country Identifier
 2022,estudiantes,CNTSCHID,CNTSCHID,Intl. School ID
@@ -5157,3 +5169,7 @@
 2022,colegios,VER_DAT,VER_DAT,Date of the database creation
 2022,colegios,EDICION,,Añadida por el pipeline: año de la edición
 2022,estudiantes,DOMINIO_PRINCIPAL,,Añadida por el pipeline: dominio focal del ciclo
+2022,estudiantes,ESCS_TREND,,Añadida por el pipeline: ESCS copia del original (2022 es la escala de referencia)
+2022,estudiantes,HISEI_TREND,,Añadida por el pipeline: HISEI copia del original (2022 es la escala de referencia)
+2022,estudiantes,HOMEPOS_TREND,,Añadida por el pipeline: HOMEPOS copia del original (2022 es la escala de referencia)
+2022,estudiantes,PAREDINT_TREND,,Añadida por el pipeline: PAREDINT copia del original (2022 es la escala de referencia)
