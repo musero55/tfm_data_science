@@ -1,7 +1,9 @@
 # app.py
 import streamlit as st
 import uuid
-from agente_pisa import agente_pisa  # <-- ¡Importas directamente tu agente ya compilado!
+import re
+from pathlib import Path
+from agente_pisa import agente_pisa  # <-- Tu agente compilado
 
 st.set_page_config(page_title="Agente PISA - TFM", layout="wide")
 st.title("📊 Asistente de Investigación PISA")
@@ -14,10 +16,35 @@ if "thread_id" not in st.session_state:
 if "mensajes_chat" not in st.session_state:
     st.session_state.mensajes_chat = []
 
-# Dibujar el historial en pantalla
+# --- FUNCIÓN PARA SEPARAR EL TEXTO Y PINTAR LA IMAGEN EN STREAMLIT ---
+def renderizar_mensaje(contenido: str):
+    # Detecta rutas locales Windows (C:/...) tanto si vienen con /gradio_api/file= como si no
+    patron_md = r'!\[.*?\]\((?:/gradio_api/file=)?([A-Za-z]:[^\)]+)\)'
+    patron_html = r'<img\s+[^>]*src=[\'"](?:/gradio_api/file=)?([A-Za-z]:[^\'"]+)[\'"][^>]*>'
+    
+    rutas_imagenes = re.findall(patron_md, contenido) + re.findall(patron_html, contenido)
+    
+    # Limpiamos las etiquetas de imagen del texto para evitar el fallo WinError 123
+    texto_limpio = re.sub(r'!\[.*?\]\([^\)]+\)', '', contenido)
+    texto_limpio = re.sub(r'<img\s+[^>]*>', '', texto_limpio)
+    
+    # 1. Renderizamos el texto explicativo
+    if texto_limpio.strip():
+        st.markdown(texto_limpio)
+        
+    # 2. Renderizamos las imágenes encontradas de forma nativa
+    for ruta in rutas_imagenes:
+        p = Path(ruta.strip())
+        if p.exists():
+            st.image(str(p), caption="Gráfico generado", use_container_width=True)
+
+# Dibujar el historial previo en pantalla
 for msg in st.session_state.mensajes_chat:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            renderizar_mensaje(msg["content"])
+        else:
+            st.markdown(msg["content"])
 
 # 3. Entrada de texto del usuario
 if prompt := st.chat_input("Escribe tu consulta sobre el informe PISA..."):
@@ -33,7 +60,7 @@ if prompt := st.chat_input("Escribe tu consulta sobre el informe PISA..."):
         contenedor_texto = st.empty()
         respuesta_final = ""
         
-        # Invocamos el stream del agente ya configurado
+        # Invocamos el stream del agente
         with st.spinner("Consultando datos y modelos PISA..."):
             for evento in agente_pisa.stream(
                 {"messages": [("user", prompt)]}, 
@@ -41,8 +68,17 @@ if prompt := st.chat_input("Escribe tu consulta sobre el informe PISA..."):
                 stream_mode="updates"
             ):
                 if "asistente" in evento:
-                    respuesta_final = evento["asistente"]["messages"][-1].content
-                    contenedor_texto.markdown(respuesta_final)
+                    msg = evento["asistente"]["messages"][-1]
+                    if hasattr(msg, "content") and msg.content:
+                        respuesta_final = msg.content
+                        
+                        # Mientras va escribiendo, filtramos el tag de la imagen para que no falle
+                        texto_parcial = re.sub(r'!\[.*?\]\([^\)]+\)', '', respuesta_final)
+                        texto_parcial = re.sub(r'<img\s+[^>]*>', '', texto_parcial)
+                        contenedor_texto.markdown(texto_parcial)
 
-        # Guardar la respuesta final en el historial de la sesión
-        st.session_state.mensajes_chat.append({"role": "assistant", "content": respuesta_final})
+        # Cuando el stream termina, mostramos el mensaje completo con su imagen
+        if respuesta_final:
+            contenedor_texto.empty()  # Limpia el borrador previo
+            renderizar_mensaje(respuesta_final)
+            st.session_state.mensajes_chat.append({"role": "assistant", "content": respuesta_final})

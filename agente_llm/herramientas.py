@@ -66,8 +66,10 @@ REGLAS DE DATOS TEMPORALES:
 
 REGLAS OBLIGATORIAS DE VISUALIZACIÓN:
 1. SIEMPRE que analices tendencias temporales, comparativas entre países, o la interpretabilidad de un modelo, ES OBLIGATORIO invocar la herramienta 'generar_grafico_datos_pisa'.
-2. NUNCA llames a 'explainer.shap_values' dentro del código generado para 'generar_grafico_datos_pisa'. 'explicador_modelo' ya calcula los valores e impactos numéricos por ti.
-3. Para graficar tras usar 'explicador_modelo', crea un gráfico de barras simple (sns.barplot) con las variables e impactos que 'explicador_modelo' te acaba de devolver como texto.
+2. Para representar la interpretabilidad del modelo, puedes utilizar tanto las funciones nativas de SHAP (por ejemplo, 'shap.plots.bar', 'shap.plots.waterfall' o 'shap.summary_plot') como gráficos de 'seaborn' o 'matplotlib'. Si usas funciones de 'shap.plots.*', es estrictamente obligatorio incluir el argumento 'show=False' para permitir el guardado correcto de la figura.
+3. Para graficar tras usar 'explicador_modelo', dispones de dos alternativas:
+   a) Construir un gráfico de SHAP nativo (por ejemplo, creando un objeto 'shap.Explanation' con los impactos y nombres de variables, o calculando valores con 'explainer') siempre con 'show=False'.
+   b) Crear un gráfico de barras simple con Seaborn ('sns.barplot') o Matplotlib utilizando directamente los nombres de variables e impactos devueltos por 'explicador_modelo'.
 4. NUNCA des por finalizada la respuesta sin incluir el markdown de la imagen devuelto por la herramienta.
 
 """

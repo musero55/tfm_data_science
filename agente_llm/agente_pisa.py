@@ -39,7 +39,9 @@ load_dotenv(find_dotenv(usecwd=True))
 if not os.getenv("GROQ_API_KEY"):
     raise ValueError("Añade GROQ_API_KEY a tu archivo .env.")
 
-llm = ChatGroq(temperature=0.0, model_name='openai/gpt-oss-120b')
+# llm = ChatGroq(temperature=0.0, model_name='openai/gpt-oss-120b')
+llm = ChatGroq(temperature=0.0, model_name='openai/gpt-oss-20b')
+
 llm_con_herramientas = llm.bind_tools(lista_herramientas_pisa)
 
 # Estado y Memoria
