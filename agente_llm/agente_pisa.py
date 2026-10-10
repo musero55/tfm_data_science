@@ -11,7 +11,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt import ToolNode, tools_condition 
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage, trim_messages
 
@@ -19,10 +19,16 @@ from langchain_core.messages import SystemMessage, trim_messages
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR))
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# Ahora sí funcionará la importación
+from src.utils_pisa import establecer_semilla
+
 from herramientas import PROMPT_SISTEMA, lista_herramientas_pisa
 from src.utils_pisa import establecer_semilla
 
-establecer_semilla(42)
 pd.set_option("display.float_format", lambda valor: f"{valor:.2f}")
 
 DIR_IMAGENES = os.path.join(tempfile.gettempdir(), "pisa_plots")
@@ -64,19 +70,19 @@ def asistente(state: State):
 
     return {"messages": [respuesta]}
 
-def enrutador_asistente(state: State):
-    ultimo_mensaje = state["messages"][-1]
-    if not hasattr(ultimo_mensaje, "tool_calls") or not ultimo_mensaje.tool_calls:
-        return END
+# def enrutador_asistente(state: State):
+#     ultimo_mensaje = state["messages"][-1]
+#     if not hasattr(ultimo_mensaje, "tool_calls") or not ultimo_mensaje.tool_calls:
+#         return END
 
-    # Si ya generó un gráfico, cortamos el bucle hacia END
-    for msg in reversed(state["messages"][:-1]):
-        if getattr(msg, "type", "") == "tool":
-            if "generar_grafico" in getattr(msg, "name", ""):
-                return END
-            break
+#     # Si ya generó un gráfico, cortamos el bucle hacia END
+#     for msg in reversed(state["messages"][:-1]):
+#         if getattr(msg, "type", "") == "tool":
+#             if "generar_grafico" in getattr(msg, "name", ""):
+#                 return END
+#             break
 
-    return "tools"
+#     return "tools"
 
 # 5. Compilación del Grafo LangGraph
 workflow = StateGraph(State)
@@ -84,7 +90,8 @@ workflow.add_node("asistente", asistente)
 workflow.add_node("tools", ToolNode(lista_herramientas_pisa))
 
 workflow.add_edge(START, "asistente")
-workflow.add_conditional_edges("asistente", enrutador_asistente)
+workflow.add_conditional_edges("asistente",tools_condition) #Si tools_condition devuelve tools, vamos a herramientas. Si no END
+
 workflow.add_edge("tools", "asistente")
 
 memoria = MemorySaver()

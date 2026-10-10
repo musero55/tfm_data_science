@@ -46,7 +46,7 @@ df_pisa_cnt= joblib.load(path_df_cnt)
 modelo_xgb_math= joblib.load(path_xgb)
 columnas_esperadas = joblib.load(path_cols)
 explainer = joblib.load(path_shap)
-encoder_original = joblib.load("data_llm/encoder.pkl")
+encoder_original = joblib.load(path_enc)
 
 
 PROMPT_SISTEMA = """Eres un asistente de investigación de élite especializado en el análisis de datos educativos y socioeconómicos del proyecto PISA, así como en los modelos de Machine Learning asociados a este estudio.
@@ -65,7 +65,7 @@ REGLAS DE DATOS TEMPORALES:
 - La base de datos contiene EXCLUSIVAMENTE información de las ediciones: 2012, 2015, 2018 y 2022.
 - Todos los paises de la base de datos pertenencen a la OECD
 - NO existen datos anteriores a 2012 ni posteriores a 2022. Si el usuario pregunta por la evolución general, limítate estrictamente a ese rango de 4 ediciones.
-- Para consultas de evolución o tendencias de un país, usa la herramienta 'analizar_tendencia_temporal'.
+- Para consultas de evolución o tendencias de un país, usa la herramienta 'analizar_tendencia_temporal_pisa'.
 - Recuerda convertir los nombres de países a su código ISO-3 (ej. España -> 'ESP').
 
 REGLAS OBLIGATORIAS DE VISUALIZACIÓN:
