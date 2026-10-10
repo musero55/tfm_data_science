@@ -12,6 +12,7 @@ import shap
 from langchain.tools import tool
 import gradio as gr
 from adjustText import adjust_text
+import urllib.parse
 
 matplotlib.use('Agg')
 
@@ -19,15 +20,10 @@ matplotlib.use('Agg')
 # 1. CARPETA SEGURA (Nativa del proyecto con pathlib)
 # ==========================================================
 # Creamos 'temp_plots' dentro de tu entorno actual de trabajo
-DIR_IMAGENES = Path(os.getcwd()) / "temp_plots"
+
+BASE_DIR = Path(__file__).resolve().parent  # Carpeta 'agente_llm'
+DIR_IMAGENES = BASE_DIR / "temp_plots"
 DIR_IMAGENES.mkdir(parents=True, exist_ok=True)
-
-
-
-if '__file__' in locals():
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-else:
-    BASE_DIR = os.getcwd()
 
 # Construir las rutas absolutas correctas uniendo directorios
 path_df_strat = os.path.join(BASE_DIR, "data_llm", "dataset_pisa_estrato_llm.pkl")
@@ -69,11 +65,10 @@ REGLAS DE DATOS TEMPORALES:
 - Recuerda convertir los nombres de países a su código ISO-3 (ej. España -> 'ESP').
 
 REGLAS OBLIGATORIAS DE VISUALIZACIÓN:
-1. SIEMPRE que analices tendencias temporales, comparativas entre países, o la interpretabilidad de un modelo (SHAP / importancia de variables para un país), ES OBLIGATORIO invocar la herramienta 'generar_grafico_datos_pisa'.
-2. NUNCA des por finalizada la respuesta analítica sin haber llamado primero a 'generar_grafico_datos_pisa' para respaldar la explicación.
-3. Si utilizas 'explicador_modelo' para un país, debes llamar INMEDIATAMENTE DESPUÉS a 'generar_grafico_datos_pisa' para trazar el gráfico de barras o SHAP waterfall correspondiente.
-4. Recuerda incluir en tu mensaje final el markdown de la imagen devuelto por la herramienta.
-...
+1. SIEMPRE que analices tendencias temporales, comparativas entre países, o la interpretabilidad de un modelo, ES OBLIGATORIO invocar la herramienta 'generar_grafico_datos_pisa'.
+2. NUNCA llames a 'explainer.shap_values' dentro del código generado para 'generar_grafico_datos_pisa'. 'explicador_modelo' ya calcula los valores e impactos numéricos por ti.
+3. Para graficar tras usar 'explicador_modelo', crea un gráfico de barras simple (sns.barplot) con las variables e impactos que 'explicador_modelo' te acaba de devolver como texto.
+4. NUNCA des por finalizada la respuesta sin incluir el markdown de la imagen devuelto por la herramienta.
 
 """
 
@@ -538,8 +533,15 @@ def generar_grafico_datos_pisa(codigo_plot: str) -> str:
         plt.savefig(ruta_absoluta, dpi=180, bbox_inches='tight')
         plt.close('all')
 
-        # Formato Markdown compatible para la interfaz
-        markdown_imagen = f"![Gráfico PISA](<{ruta_absoluta.as_posix()}>)"
+        
+        ruta_posix = ruta_absoluta.resolve().as_posix()
+
+        # 3. Codificar ÚNICAMENTE los espacios en blanco a '%20' para no alterar los dos puntos de 'C:'
+        ruta_url = ruta_posix.replace(" ", "%20")
+
+        # 4. En Windows, Gradio requiere una barra extra delante de la unidad (ej. /file=/C:/Users/...)
+        markdown_imagen = f"\n\n![Gráfico PISA](/gradio_api/file={ruta_posix})\n\n"
+
 
         return (
                     f"IMAGEN GUARDADA EXITOSAMENTE EN DISCO.\n"

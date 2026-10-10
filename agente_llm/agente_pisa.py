@@ -70,21 +70,8 @@ def asistente(state: State):
 
     return {"messages": [respuesta]}
 
-# def enrutador_asistente(state: State):
-#     ultimo_mensaje = state["messages"][-1]
-#     if not hasattr(ultimo_mensaje, "tool_calls") or not ultimo_mensaje.tool_calls:
-#         return END
 
-#     # Si ya generó un gráfico, cortamos el bucle hacia END
-#     for msg in reversed(state["messages"][:-1]):
-#         if getattr(msg, "type", "") == "tool":
-#             if "generar_grafico" in getattr(msg, "name", ""):
-#                 return END
-#             break
-
-#     return "tools"
-
-# 5. Compilación del Grafo LangGraph
+# Compilación del Grafo LangGraph
 workflow = StateGraph(State)
 workflow.add_node("asistente", asistente)
 workflow.add_node("tools", ToolNode(lista_herramientas_pisa))
@@ -97,7 +84,7 @@ workflow.add_edge("tools", "asistente")
 memoria = MemorySaver()
 agente_pisa = workflow.compile(checkpointer=memoria)
 
-# 6. Conexión con el Front-end (Gradio)
+# 6. Conexión con el Front-end (Streamlit)
 def responder_chat(mensaje_usuario, historial):
     config_hilo = {"configurable": {"thread_id": "sesion_activa"}}
     
@@ -115,7 +102,7 @@ def responder_chat(mensaje_usuario, historial):
 
 demo = gr.ChatInterface(
     fn=responder_chat,
-    title="Asistente PISA - TFM",
+    title="Asistente PISA (2012 - 2022)",
     description="Pregunta sobre factores socioeducativos y modelos predictivos PISA."
 )
 
