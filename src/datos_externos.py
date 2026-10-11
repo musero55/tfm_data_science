@@ -104,6 +104,12 @@ SERIES_OCDE = {
         'dataflow': 'DSD_EAG_UOE_NON_FIN_PERS@DF_UOE_NF_PERS_CLS', 'version': '1.1',
         'dims': [None] * 14,
     },
+    # Gini de la renta disponible (base de datos de distribución de ingresos; otra agencia de la OCDE)
+    'gini_ocde': {
+        'agencia': 'OECD.WISE.INE', 'dataflow': 'DSD_WISE_IDD@DF_IDD', 'version': '1.0',
+        # FREQ, MEASURE, STATISTICAL_OPERATION, UNIT_MEASURE, AGE, METHODOLOGY, DEFINITION, POVERTY_LINE
+        'dims': ['A', 'INC_DISP_GINI', None, None, '_T', 'METH2012', 'D_CUR', None],
+    },
 }
 
 # Eurostat: gasto público por alumno (EUR, PPS, % del PIB per cápita), solo países de la UE.
@@ -114,6 +120,7 @@ GEO_EUROSTAT = {'AUT': 'AT', 'BEL': 'BE', 'CZE': 'CZ', 'DEU': 'DE', 'DNK': 'DK',
                 'POL': 'PL', 'PRT': 'PT', 'SVK': 'SK', 'SVN': 'SI', 'SWE': 'SE'}
 
 PIB_BANCO_MUNDIAL = 'NY.GDP.PCAP.PP.KD'   # PIB per cápita PPP, USD internacionales constantes de 2021
+GINI_BANCO_MUNDIAL = 'SI.POV.GINI'        # Gini (0-100) de encuestas de hogares
 
 
 def _get(url: str, timeout: int = 300) -> bytes:
@@ -122,20 +129,21 @@ def _get(url: str, timeout: int = 300) -> bytes:
         return r.read()
 
 
-def _n_dimensiones(dataflow: str) -> int:
+def _n_dimensiones(dataflow: str, agencia: str = AGENCIA_EDU) -> int:
     """Nº de dimensiones del DSD de un dataflow (consulta el catálogo de la OCDE)."""
     import xml.etree.ElementTree as ET
     dsd = dataflow.split('@')[0]
-    xml = _get(f'https://sdmx.oecd.org/public/rest/datastructure/{AGENCIA_EDU}/{dsd}/latest', timeout=60)
+    xml = _get(f'https://sdmx.oecd.org/public/rest/datastructure/{agencia}/{dsd}/latest', timeout=60)
     ns = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
     return len(next(ET.fromstring(xml).iter(ns + 'DimensionList')).findall(ns + 'Dimension'))
 
 
 def url_oecd(serie: dict, paises: list[str], inicio: int = 2000) -> str:
     """URL de consulta CSV de una serie de `SERIES_OCDE` para los países indicados."""
-    dims = serie['dims'] if serie['dims'] is not None else [None] * (_n_dimensiones(serie['dataflow']) - 1)
+    agencia = serie.get('agencia', AGENCIA_EDU)
+    dims = serie['dims'] if serie['dims'] is not None else [None] * (_n_dimensiones(serie['dataflow'], agencia) - 1)
     clave = '.'.join(['+'.join(paises)] + [d or '' for d in dims])
-    return (f"{URL_OCDE}/{AGENCIA_EDU},{serie['dataflow']},{serie['version']}/{clave}"
+    return (f"{URL_OCDE}/{agencia},{serie['dataflow']},{serie['version']}/{clave}"
             f"?startPeriod={inicio}&format=csvfilewithlabels")
 
 
@@ -149,19 +157,24 @@ def descargar_oecd(nombre: str, ruta_carpeta: str, paises: list[str] | None = No
     return ruta
 
 
-def descargar_pib(ruta_carpeta: str, paises: list[str] | None = None, inicio: int = 2000, fin: int = 2023) -> str:
-    """PIB per cápita PPP (Banco Mundial) a `<ruta_carpeta>/pib_per_capita_ppp.csv`
-    (columnas: pais, año, valor)."""
+def descargar_banco_mundial(indicador: str, nombre: str, ruta_carpeta: str, paises: list[str] | None = None,
+                            inicio: int = 2000, fin: int = 2023) -> str:
+    """Indicador del Banco Mundial a `<ruta_carpeta>/<nombre>.csv` (columnas: pais, año, valor)."""
     paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
-    url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{PIB_BANCO_MUNDIAL}"
+    url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
            f"?format=json&date={inicio}:{fin}&per_page=20000")
     _, filas = json.loads(_get(url))
     df = pd.DataFrame(
         [{'pais': f['countryiso3code'], 'año': int(f['date']), 'valor': f['value']} for f in filas]
     ).sort_values(['pais', 'año'])
-    ruta = os.path.join(ruta_carpeta, 'pib_per_capita_ppp.csv')
+    ruta = os.path.join(ruta_carpeta, f'{nombre}.csv')
     df.to_csv(ruta, index=False)
     return ruta
+
+
+def descargar_pib(ruta_carpeta: str, paises: list[str] | None = None, inicio: int = 2000, fin: int = 2023) -> str:
+    """PIB per cápita PPP (Banco Mundial) a `<ruta_carpeta>/pib_per_capita_ppp.csv`."""
+    return descargar_banco_mundial(PIB_BANCO_MUNDIAL, 'pib_per_capita_ppp', ruta_carpeta, paises, inicio, fin)
 
 
 def descargar_eurostat(ruta_carpeta: str, inicio: int = 2010) -> str:
@@ -206,6 +219,11 @@ def descargar_todo(ruta_carpeta: str, forzar: bool = False) -> dict[str, str]:
         print('Descargando pib_per_capita_ppp...')
         descargar_pib(ruta_carpeta)
     rutas['pib_per_capita_ppp'] = ruta
+    ruta = os.path.join(ruta_carpeta, 'gini_banco_mundial.csv')
+    if forzar or not os.path.exists(ruta):
+        print('Descargando gini_banco_mundial...')
+        descargar_banco_mundial(GINI_BANCO_MUNDIAL, 'gini_banco_mundial', ruta_carpeta)
+    rutas['gini_banco_mundial'] = ruta
     ruta = os.path.join(ruta_carpeta, 'gasto_publico_por_alumno_eurostat.csv')
     if forzar or not os.path.exists(ruta):
         print('Descargando gasto_publico_por_alumno_eurostat...')
@@ -221,21 +239,26 @@ PORTAL_BM = f'https://data.worldbank.org/indicator/{PIB_BANCO_MUNDIAL}'
 PORTAL_EUROSTAT = f'https://ec.europa.eu/eurostat/databrowser/view/{EUROSTAT_GASTO_ALUMNO}/default/table?lang=en'
 
 
-def url_explorador(dataflow: str, version: str) -> str:
+def url_explorador(dataflow: str, version: str, agencia: str = AGENCIA_EDU) -> str:
     """Página del dataflow en el OECD Data Explorer (donde se ven y descargan los datos)."""
     return (f"{URL_EXPLORADOR}?df%5Bds%5D=DisseminateFinalDMZ&df%5Bid%5D={dataflow.replace('@', '%40')}"
-            f"&df%5Bag%5D={AGENCIA_EDU}&df%5Bvs%5D={version}")
+            f"&df%5Bag%5D={agencia}&df%5Bvs%5D={version}")
 
 
 def enlaces_fuentes() -> pd.DataFrame:
     """Una fila por fichero descargado: proveedor, portal donde se ven los datos y consulta
     de API de muestra (España, último dato) que devuelve el mismo formato que la descarga."""
-    filas = [{'serie': n, 'fichero': f'{n}.csv', 'proveedor': 'OCDE', 'dataflow': s['dataflow'], 'version': s['version'],
-              'formato': 'csv', 'portal': url_explorador(s['dataflow'], s['version']),
+    filas = [{'serie': n, 'fichero': f'{n}.csv', 'proveedor': 'OCDE', 'agencia': s.get('agencia', AGENCIA_EDU),
+              'dataflow': s['dataflow'], 'version': s['version'],
+              'formato': 'csv', 'portal': url_explorador(s['dataflow'], s['version'], s.get('agencia', AGENCIA_EDU)),
               'api': url_oecd(s, ['ESP'], 2000) + '&lastNObservations=1'} for n, s in SERIES_OCDE.items()]
     filas.append({'serie': 'pib_per_capita_ppp', 'fichero': 'pib_per_capita_ppp.csv', 'proveedor': 'Banco Mundial',
                   'dataflow': PIB_BANCO_MUNDIAL, 'version': 'API v2', 'formato': 'wb', 'portal': PORTAL_BM,
                   'api': f'{URL_BANCO_MUNDIAL}/country/ESP/indicator/{PIB_BANCO_MUNDIAL}?format=json&date=2022'})
+    filas.append({'serie': 'gini_banco_mundial', 'fichero': 'gini_banco_mundial.csv', 'proveedor': 'Banco Mundial',
+                  'dataflow': GINI_BANCO_MUNDIAL, 'version': 'API v2', 'formato': 'wb',
+                  'portal': f'https://data.worldbank.org/indicator/{GINI_BANCO_MUNDIAL}',
+                  'api': f'{URL_BANCO_MUNDIAL}/country/ESP/indicator/{GINI_BANCO_MUNDIAL}?format=json&date=2018'})
     filas.append({'serie': 'gasto_publico_por_alumno_eurostat', 'fichero': 'gasto_publico_por_alumno_eurostat.csv',
                   'proveedor': 'Eurostat', 'dataflow': EUROSTAT_GASTO_ALUMNO, 'version': '-', 'formato': 'eurostat',
                   'portal': PORTAL_EUROSTAT,
@@ -268,15 +291,17 @@ def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
     import xml.etree.ElementTree as ET
     t = enlaces_fuentes()
     ns = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
-    try:
-        raiz = ET.fromstring(_get(f'https://sdmx.oecd.org/public/rest/dataflow/{AGENCIA_EDU}', 120))
-        catalogo = {d.get('id'): d.get('version') for d in raiz.iter(ns + 'Dataflow')}
-    except Exception as e:
-        catalogo = None
-        print(f'No se pudo leer el catálogo de la OCDE: {e}')
+    catalogos = {}
+    for agencia in t.loc[t['proveedor'] == 'OCDE', 'agencia'].unique():
+        try:
+            raiz = ET.fromstring(_get(f'https://sdmx.oecd.org/public/rest/dataflow/{agencia}', 120))
+            catalogos[agencia] = {d.get('id'): d.get('version') for d in raiz.iter(ns + 'Dataflow')}
+        except Exception as e:
+            print(f'No se pudo leer el catálogo de la OCDE ({agencia}): {e}')
 
     def portal_ok(f):
         if f['proveedor'] == 'OCDE':
+            catalogo = catalogos.get(f['agencia'])
             if catalogo is None:
                 return 'sin comprobar'
             v = catalogo.get(f['dataflow'])

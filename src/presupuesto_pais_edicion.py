@@ -60,6 +60,7 @@ CONTEXTO_EDUCATIVO = [
     'pisa_brecha_stratio', 'pisa_brecha_clsize', 'pisa_brecha_certificados', 'pisa_brecha_edushort', 'pisa_brecha_staffshort',
     'escolarizacion_3_años_pct', 'escolarizacion_4_años_pct', 'escolarizacion_15_años_pct',
     'repeticion_pct_sec1', 'docentes_50mas_pct', 'docentes_menos_30_pct', 'tamaño_clase_sec1', 'horas_docencia_sec1',
+    'gini', 'gini_fuente', 'gini_año',
 ]
 
 
@@ -80,6 +81,8 @@ SELECCION = [
     'salario_legal_inicial_usd_ppp', 'salario_legal_15a_usd_ppp', 'alumnos_por_docente_sec1', 'horas_docencia_sec1',
     # Renta (USD PPP constantes de 2020) y tamaño
     'pib_pc_usd_ppp', 'poblacion',
+    # Desigualdad de renta (0-1; OCDE y, si falta, Banco Mundial; ver `gini_edicion`)
+    'gini',
 ]
 
 
@@ -263,6 +266,19 @@ def acumulado_6_15(primaria: pd.DataFrame, secundaria1: pd.DataFrame, año: int)
     return (p.sum() + s.sum()).where(completo)
 
 
+def gini_edicion(gini_ocde: pd.DataFrame, gini_bm: pd.DataFrame, año: int) -> pd.DataFrame:
+    """Gini (0-1) de la renta disponible de cada país en la edición `año`. Se toma la observación más cercana al
+    año (como mucho ±1); a igual distancia, la de la OCDE antes que la del Banco Mundial (que va de 0 a 100) y,
+    si aún empatan, el año anterior. Devuelve `gini`, `gini_fuente` y `gini_año`, indexado por país."""
+    o = gini_ocde[['pais', 'año', 'valor']].assign(fuente='OCDE', prioridad=0)
+    b = gini_bm.dropna(subset=['valor']).assign(valor=lambda d: d['valor'] / 100, fuente='Banco Mundial', prioridad=1)
+    c = pd.concat([o, b[['pais', 'año', 'valor', 'fuente', 'prioridad']]])
+    c['año'] = c['año'].astype(int)
+    c = c[c['año'].between(año - 1, año + 1)].assign(distancia=lambda d: (d['año'] - año).abs(), posterior=lambda d: d['año'] > año)
+    mejor = c.sort_values(['pais', 'distancia', 'prioridad', 'posterior']).groupby('pais').head(1).set_index('pais')
+    return mejor[['valor', 'fuente', 'año']].rename(columns={'valor': 'gini', 'fuente': 'gini_fuente', 'año': 'gini_año'})
+
+
 def variables_externas(datos: dict, año: int) -> pd.DataFrame:
     """Variables de presupuesto, renta y personal de cada país en la edición `año`.
     `datos`: dict con los DataFrames cargados con `cargar_oecd` (ver `construir_tabla`)."""
@@ -362,6 +378,10 @@ def variables_externas(datos: dict, año: int) -> pd.DataFrame:
     for n, nivel in (('sec1', 'ED2'), ('sec2', 'ED3')):
         v[f'eurostat_gasto_publico_alumno_{n}_pps'] = en(serie(eu, nivel=nivel, unidad='PPS'), año)
 
+    # --- Desigualdad: Gini de la renta disponible
+    g = gini_edicion(datos['gini_ocde'], datos['gini_bm'], año)
+    v['gini'], v['gini_fuente'], v['gini_año'] = g['gini'], g['gini_fuente'], g['gini_año']
+
     return pd.DataFrame(v).reindex(PAISES_OCDE_TODAS_LAS_EDICIONES).rename_axis('pais').reset_index()
 
 
@@ -403,6 +423,7 @@ def construir_tabla(ruta_intermedios: str, ruta_externos: str, ediciones: list[i
         'tamaño_clase': c('tamaño_de_clase'), 'docentes_edad': c('docentes_edad'), 'repeticion': c('repeticion'),
         'escolarizacion': c('escolarizacion_por_edad'),
         'eurostat': pd.read_csv(os.path.join(ruta_externos, 'gasto_publico_por_alumno_eurostat.csv')),
+        'gini_ocde': c('gini_ocde'), 'gini_bm': pd.read_csv(os.path.join(ruta_externos, 'gini_banco_mundial.csv')),
     }
     pib_pc = serie(pib)
     tablas = []
@@ -498,6 +519,9 @@ ORIGEN_VARIABLES = {
     'salario_legal_inicial_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal inicial (moneda nacional) deflactado a 2020 y convertido con la PPP de 2020'),
     'salario_legal_15a_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal con 15 años de experiencia, igual conversión'),
     # contexto educativo, fuentes externas
+    'gini': (('gini_ocde', 'gini_banco_mundial'), 'Gini de la renta disponible (0-1): observación más cercana a la edición (±1 año); OCDE antes que Banco Mundial (÷100)'),
+    'gini_fuente': (('gini_ocde', 'gini_banco_mundial'), 'Fuente de la observación usada para `gini`'),
+    'gini_año': (('gini_ocde', 'gini_banco_mundial'), 'Año de la observación usada para `gini` (edición, ±1)'),
     'poblacion': (('estadisticas_referencia',), 'Población en personas (`POP`; la OCDE la da en miles)'),
     'escolarizacion_3_años_pct': (('escolarizacion_por_edad',), '% de la población de 3 años matriculada; 0 = NaN'),
     'escolarizacion_4_años_pct': (('escolarizacion_por_edad',), '% de la población de 4 años matriculada; 0 = NaN'),
@@ -542,6 +566,8 @@ ORIGEN_VARIABLES = {
 def _proveedor(series: tuple) -> str:
     if series == ('PISA',):
         return 'PISA (tablas maestras)'
+    if series[0] == 'gini_ocde':
+        return 'OCDE y Banco Mundial'
     return {'pib_per_capita_ppp': 'Banco Mundial', 'gasto_publico_por_alumno_eurostat': 'Eurostat'}.get(series[0], 'OCDE')
 
 
