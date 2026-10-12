@@ -5,6 +5,9 @@
 manuals/
 data/raw/
 data/intermediate/datos_anuales_imputados/
+agente_llm/.env
+agente_llm/__pycache__/
+agente_llm/temp_plots/*
 
 #Datos temporales
 .ipynb_checkpoints/
