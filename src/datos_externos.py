@@ -177,6 +177,42 @@ def descargar_pib(ruta_carpeta: str, paises: list[str] | None = None, inicio: in
     return descargar_banco_mundial(PIB_BANCO_MUNDIAL, 'pib_per_capita_ppp', ruta_carpeta, paises, inicio, fin)
 
 
+# Indicadores macroeconómicos del Banco Mundial (WDI): código -> (nombre de columna, qué mide, tema)
+INDICADORES_BANCO_MUNDIAL = {
+    'NY.GDP.MKTP.KD.ZG': ('crecimiento_pib_pct_anual', 'Crecimiento anual del PIB (%)', 'Ciclo económico'),
+    'FP.CPI.TOTL.ZG': ('inflacion_precios_consumo_pct_anual', 'Inflación: variación anual de los precios al consumo (%)', 'Ciclo económico'),
+    'SL.UEM.TOTL.ZS': ('desempleo_total_pct_poblacion_activa', 'Desempleo total (% de la población activa; estimación de la OIT)', 'Mercado de trabajo'),
+    'SL.UEM.1524.ZS': ('desempleo_juvenil_15_24_pct_poblacion_activa', 'Desempleo juvenil de 15 a 24 años (% de la población activa de esa edad)', 'Mercado de trabajo'),
+    'SL.TLF.CACT.ZS': ('participacion_laboral_pct_poblacion_15_o_mas', 'Participación laboral (% de la población de 15 años o más)', 'Mercado de trabajo'),
+    'NV.SRV.TOTL.ZS': ('valor_añadido_servicios_pct_pib', 'Valor añadido de los servicios (% del PIB)', 'Estructura productiva'),
+    'NV.IND.TOTL.ZS': ('valor_añadido_industria_pct_pib', 'Valor añadido de la industria (% del PIB)', 'Estructura productiva'),
+    'NV.AGR.TOTL.ZS': ('valor_añadido_agricultura_pct_pib', 'Valor añadido de la agricultura (% del PIB)', 'Estructura productiva'),
+    'NE.TRD.GNFS.ZS': ('comercio_exterior_pct_pib', 'Comercio exterior: exportaciones más importaciones (% del PIB)', 'Estructura productiva'),
+    'GB.XPD.RSDV.GD.ZS': ('gasto_investigacion_desarrollo_pct_pib', 'Gasto en investigación y desarrollo (% del PIB)', 'Estructura productiva'),
+    'SP.URB.TOTL.IN.ZS': ('poblacion_urbana_pct', 'Población urbana (% de la población total)', 'Demografía y territorio'),
+    'SP.POP.0014.TO.ZS': ('poblacion_0_14_años_pct', 'Población de 0 a 14 años (% de la población total)', 'Demografía y territorio'),
+    'SP.POP.65UP.TO.ZS': ('poblacion_65_o_mas_años_pct', 'Población de 65 años o más (% de la población total)', 'Demografía y territorio'),
+    'IT.NET.USER.ZS': ('usuarios_internet_pct_poblacion', 'Personas que usan internet (% de la población)', 'Desarrollo y servicios'),
+    'SH.XPD.CHEX.GD.ZS': ('gasto_sanitario_pct_pib', 'Gasto sanitario corriente (% del PIB)', 'Desarrollo y servicios'),
+}
+
+
+def descargar_macro_banco_mundial(ruta_carpeta: str, paises: list[str] | None = None, inicio: int = 2010, fin: int = 2023) -> str:
+    """Los indicadores de `INDICADORES_BANCO_MUNDIAL` a `<ruta_carpeta>/macro_banco_mundial.csv`
+    (formato largo: pais, año, indicador (código del Banco Mundial), valor)."""
+    paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
+    observaciones = []
+    for indicador in INDICADORES_BANCO_MUNDIAL:
+        url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
+               f"?format=json&date={inicio}:{fin}&per_page=20000")
+        _, filas = json.loads(_get(url))
+        observaciones += [{'pais': fila['countryiso3code'], 'año': int(fila['date']), 'indicador': indicador, 'valor': fila['value']} for fila in filas]
+    datos = pd.DataFrame(observaciones).sort_values(['indicador', 'pais', 'año'])
+    ruta = os.path.join(ruta_carpeta, 'macro_banco_mundial.csv')
+    datos.to_csv(ruta, index=False)
+    return ruta
+
+
 def descargar_eurostat(ruta_carpeta: str, inicio: int = 2010) -> str:
     """Gasto público por alumno de Eurostat (`educ_uoe_fine09`) a
     `<ruta_carpeta>/gasto_publico_por_alumno_eurostat.csv`
