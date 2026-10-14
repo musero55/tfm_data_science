@@ -34,32 +34,36 @@ AÑO_BASE = 2020   # año de los precios constantes (el mismo que usa la OCDE en
 
 # Financiación del centro (% por origen): 2012 usa otros nombres
 COLUMNAS_FINANCIACION = {
-    'pisa_fin_gobierno_pct': ('SC02Q01', 'SC016Q01TA'),
-    'pisa_fin_cuotas_pct': ('SC02Q02', 'SC016Q02TA'),
-    'pisa_fin_donaciones_pct': ('SC02Q03', 'SC016Q03TA'),
-    'pisa_fin_otras_pct': ('SC02Q04', 'SC016Q04TA'),
+    'pisa_financiacion_centro_gobierno_pct': ('SC02Q01', 'SC016Q01TA'),
+    'pisa_financiacion_centro_cuotas_pct': ('SC02Q02', 'SC016Q02TA'),
+    'pisa_financiacion_centro_donaciones_pct': ('SC02Q03', 'SC016Q03TA'),
+    'pisa_financiacion_centro_otras_pct': ('SC02Q04', 'SC016Q04TA'),
 }
 
 # Recursos de centro cuya distribución entre centros desfavorecidos y favorecidos se mide
-RECURSOS_BRECHA = ['stratio', 'clsize', 'certificados', 'edushort', 'staffshort']
+RECURSOS_BRECHA = ['alumnos_por_profesor', 'tamaño_clase', 'profesorado_certificado', 'escasez_material', 'escasez_personal']
+
+# Nombre de cada dominio y de cada nivel de la OCDE en las columnas de la tabla
+NOMBRE_DOMINIO = {'MATH': 'matematicas', 'READ': 'lectura', 'SCIE': 'ciencias'}
+NOMBRE_NIVEL_GASTO = {'1': 'primaria', '2': 'secundaria_primera_etapa', '3': 'secundaria_segunda_etapa', '2_3': 'secundaria'}
 
 
 # ---------------------------------------------------------------- clasificación de columnas
 
 CLAVE = ['pais', 'edicion']
 # Resultados de PISA y control social (necesarios para cualquier análisis del gasto)
-RESULTADOS = ['pisa_math', 'pisa_read', 'pisa_scie', 'pisa_n_alumnos', 'pisa_escs_trend_media']
+RESULTADOS = ['pisa_matematicas', 'pisa_lectura', 'pisa_ciencias', 'pisa_numero_alumnos', 'pisa_escs_trend_media']
 # Variables NO económicas: contexto educativo (controles o mediadores posibles). Para mover una
 # variable a la tabla económica basta con quitarla de esta lista.
 CONTEXTO_EDUCATIVO = [
-    'poblacion', 'pisa_n_centros', 'pisa_escs_trend_sd', 'pisa_segregacion_escs_pct',
-    'pisa_min_mates', 'pisa_min_lengua', 'pisa_min_ciencias',
-    'pisa_stratio', 'pisa_clsize', 'pisa_schsize', 'pisa_pct_centros_publicos',
+    'poblacion', 'pisa_numero_centros', 'pisa_escs_trend_desviacion_tipica', 'pisa_segregacion_social_entre_centros_pct',
+    'pisa_minutos_semanales_matematicas', 'pisa_minutos_semanales_lengua', 'pisa_minutos_semanales_ciencias',
+    'pisa_alumnos_por_profesor', 'pisa_tamaño_clase', 'pisa_tamaño_centro', 'pisa_centros_publicos_pct',
     'pisa_profesores_certificados_pct', 'pisa_profesores_master_pct', 'pisa_ordenadores_por_alumno',
-    'pisa_autonomia_recursos', 'pisa_edushort', 'pisa_staffshort',
-    'pisa_brecha_stratio', 'pisa_brecha_clsize', 'pisa_brecha_certificados', 'pisa_brecha_edushort', 'pisa_brecha_staffshort',
+    'pisa_autonomia_recursos', 'pisa_escasez_material_educativo', 'pisa_escasez_personal',
+    'pisa_brecha_alumnos_por_profesor', 'pisa_brecha_tamaño_clase', 'pisa_brecha_profesorado_certificado', 'pisa_brecha_escasez_material', 'pisa_brecha_escasez_personal',
     'escolarizacion_3_años_pct', 'escolarizacion_4_años_pct', 'escolarizacion_15_años_pct',
-    'repeticion_pct_sec1', 'docentes_50mas_pct', 'docentes_menos_30_pct', 'tamaño_clase_sec1', 'horas_docencia_sec1',
+    'repeticion_pct_secundaria_primera_etapa', 'docentes_50_o_mas_años_pct', 'docentes_menos_de_30_años_pct', 'tamaño_clase_secundaria_primera_etapa', 'horas_docencia_anuales_secundaria_primera_etapa',
     'gini', 'gini_fuente', 'gini_año',
 ]
 
@@ -69,18 +73,17 @@ CONTEXTO_EDUCATIVO = [
 # después), y todas están en unidades comparables entre países y años (% o USD PPP constantes de 2020).
 SELECCION = [
     # Gasto por alumno (USD PPP, precios constantes de 2020)
-    'gasto_alumno_preprimaria', 'gasto_alumno_1', 'gasto_alumno_2', 'gasto_alumno_3', 'gasto_alumno_2_3',
-    'gasto_alumno_terciaria', 'gasto_alumno_auxiliares_2_3',
-    # Gasto total de sec. 1.ª+2.ª (USD PPP constantes de 2020) y matrícula, para dividir después
-    'gasto_total_corriente_2_3', 'gasto_total_capital_2_3', 'gasto_total_personal_2_3', 'gasto_total_docentes_2_3',
-    'matricula_fte_2_3',
+    'gasto_alumno_preprimaria_usd_ppp', 'gasto_alumno_primaria_usd_ppp', 'gasto_alumno_secundaria_primera_etapa_usd_ppp', 'gasto_alumno_secundaria_segunda_etapa_usd_ppp', 'gasto_alumno_secundaria_usd_ppp',
+    'gasto_alumno_secundaria_servicios_auxiliares_usd_ppp',
+    # Gasto total de secundaria 1.ª+2.ª (USD PPP constantes de 2020)
+    'gasto_total_corriente_secundaria_usd_ppp', 'gasto_total_capital_secundaria_usd_ppp', 'gasto_total_personal_secundaria_usd_ppp', 'gasto_total_docentes_secundaria_usd_ppp',
     # Esfuerzo y origen de la financiación (%)
-    'gasto_pib_pct_1T4', 'gasto_pct_gasto_publico_1T4', 'gasto_publico_total_pct_pib',
-    'financiacion_privada_pct', 'financiacion_exterior_pct',
-    # Docentes (salario en USD PPP constantes de 2020; horas legales por año)
-    'salario_legal_inicial_usd_ppp', 'salario_legal_15a_usd_ppp', 'alumnos_por_docente_sec1', 'horas_docencia_sec1',
+    'gasto_pct_pib_primaria_a_postsecundaria', 'pct_gasto_publico_en_primaria_a_postsecundaria', 'gasto_publico_total_pct_pib',
+    'financiacion_privada_pct_gasto_secundaria', 'financiacion_exterior_pct_gasto_secundaria',
+    # Docentes (salario en USD PPP constantes de 2020)
+    'salario_legal_docente_inicial_usd_ppp', 'salario_legal_docente_15_años_experiencia_usd_ppp', 'alumnos_por_docente_secundaria_primera_etapa',
     # Renta (USD PPP constantes de 2020) y tamaño
-    'pib_pc_usd_ppp', 'poblacion',
+    'pib_per_capita_usd_ppp', 'poblacion',
     # Desigualdad de renta (0-1; OCDE y, si falta, Banco Mundial; ver `gini_edicion`)
     'gini',
 ]
@@ -90,91 +93,91 @@ def dividir_tabla(tabla: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Separa la tabla en (económica, contexto educativo). Ambas llevan `pais` y `edicion`;
     la económica incluye además los resultados de PISA y el `ESCS` medio. Todo lo que no
     esté en `CONTEXTO_EDUCATIVO` ni en `RESULTADOS` se considera económico."""
-    desconocidas = [c for c in CONTEXTO_EDUCATIVO + RESULTADOS if c not in tabla.columns]
+    desconocidas = [columna for columna in CONTEXTO_EDUCATIVO + RESULTADOS if columna not in tabla.columns]
     assert not desconocidas, f'columnas clasificadas que no existen: {desconocidas}'
-    economicas = [c for c in tabla.columns if c not in CLAVE + RESULTADOS + CONTEXTO_EDUCATIVO]
+    economicas = [columna for columna in tabla.columns if columna not in CLAVE + RESULTADOS + CONTEXTO_EDUCATIVO]
     return (tabla[CLAVE + RESULTADOS + economicas].copy(), tabla[CLAVE + CONTEXTO_EDUCATIVO].copy())
 
 
-def media_ponderada(x: pd.Series, w: pd.Series) -> float:
-    """Media de `x` ponderada por `w`, ignorando nulos. NaN si no hay datos."""
-    m = x.notna() & w.notna()
-    return float(np.average(x[m], weights=w[m])) if m.any() else np.nan
+def media_ponderada(valores: pd.Series, pesos: pd.Series) -> float:
+    """Media de `valores` ponderada por `pesos`, ignorando nulos. NaN si no hay datos."""
+    filas_validas = valores.notna() & pesos.notna()
+    return float(np.average(valores[filas_validas], weights=pesos[filas_validas])) if filas_validas.any() else np.nan
 
 
-def desviacion_ponderada(x: pd.Series, w: pd.Series) -> float:
-    m = x.notna() & w.notna()
-    if not m.any():
+def desviacion_ponderada(valores: pd.Series, pesos: pd.Series) -> float:
+    filas_validas = valores.notna() & pesos.notna()
+    if not filas_validas.any():
         return np.nan
-    media = np.average(x[m], weights=w[m])
-    return float(np.sqrt(np.average((x[m] - media) ** 2, weights=w[m])))
+    media = np.average(valores[filas_validas], weights=pesos[filas_validas])
+    return float(np.sqrt(np.average((valores[filas_validas] - media) ** 2, weights=pesos[filas_validas])))
 
 
 def primera(nombres, *candidatas: str) -> str | None:
     """Primera de `candidatas` que exista en `nombres` (las ediciones nombran distinto)."""
-    return next((c for c in candidatas if c in nombres), None)
+    return next((candidata for candidata in candidatas if candidata in nombres), None)
 
 
 # ---------------------------------------------------------------- PISA
 
-def resultados_pisa(ruta_intermedios: str, año: int) -> pd.DataFrame:
+def resultados_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
     """Por país: media de cada dominio (PV promediados por alumno, ponderados por
     `W_FSTUWT`), nº de alumnos, media y desviación de `ESCS_TREND`, minutos semanales
     de aprendizaje por asignatura (2012-2018; los ceros se tratan como dato ausente)
     y segregación socioeconómica (% de la varianza de `ESCS_TREND` entre centros)."""
-    ruta, _ = rutas_datos_anuales(ruta_intermedios, año)
+    ruta, _ = rutas_datos_anuales(ruta_raw_base, año)
     nombres = pq.ParquetFile(ruta).schema.names
-    pv = [c for d in DOMINIOS for c in columnas_pv(d) if c in nombres]
-    minutos = {'pisa_min_mates': 'MMINS', 'pisa_min_lengua': 'LMINS', 'pisa_min_ciencias': 'SMINS'}
+    columnas_valores_plausibles = [columna for dominio in DOMINIOS for columna in columnas_pv(dominio) if columna in nombres]
+    minutos = {'pisa_minutos_semanales_matematicas': 'MMINS', 'pisa_minutos_semanales_lengua': 'LMINS', 'pisa_minutos_semanales_ciencias': 'SMINS'}
     minutos = {k: v for k, v in minutos.items() if v in nombres}
-    est = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND'] + pv + list(minutos.values()))
+    estudiantes = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND'] + columnas_valores_plausibles + list(minutos.values()))
     filas = []
-    for pais, g in est.groupby('CNT'):
-        fila = {'pais': pais, 'pisa_n_alumnos': len(g)}
-        for d in DOMINIOS:
-            cols = [c for c in columnas_pv(d) if c in g.columns]
-            fila[f'pisa_{d.lower()}'] = media_ponderada(g[cols].mean(axis=1), g['W_FSTUWT'])
-        fila['pisa_escs_trend_media'] = media_ponderada(g['ESCS_TREND'], g['W_FSTUWT'])
-        fila['pisa_escs_trend_sd'] = desviacion_ponderada(g['ESCS_TREND'], g['W_FSTUWT'])
+    for pais, estudiantes_pais in estudiantes.groupby('CNT'):
+        fila = {'pais': pais, 'pisa_numero_alumnos': len(estudiantes_pais)}
+        for dominio in DOMINIOS:
+            columnas_dominio = [columna for columna in columnas_pv(dominio) if columna in estudiantes_pais.columns]
+            fila[f'pisa_{NOMBRE_DOMINIO[dominio]}'] = media_ponderada(estudiantes_pais[columnas_dominio].mean(axis=1), estudiantes_pais['W_FSTUWT'])
+        fila['pisa_escs_trend_media'] = media_ponderada(estudiantes_pais['ESCS_TREND'], estudiantes_pais['W_FSTUWT'])
+        fila['pisa_escs_trend_desviacion_tipica'] = desviacion_ponderada(estudiantes_pais['ESCS_TREND'], estudiantes_pais['W_FSTUWT'])
         for nuevo, origen in minutos.items():
-            fila[nuevo] = media_ponderada(g[origen].where(g[origen] > 0), g['W_FSTUWT'])
-        fila['pisa_segregacion_escs_pct'] = segregacion(g)
+            fila[nuevo] = media_ponderada(estudiantes_pais[origen].where(estudiantes_pais[origen] > 0), estudiantes_pais['W_FSTUWT'])
+        fila['pisa_segregacion_social_entre_centros_pct'] = segregacion(estudiantes_pais)
         filas.append(fila)
     return pd.DataFrame(filas)
 
 
-def segregacion(g: pd.DataFrame) -> float:
+def segregacion(estudiantes_pais: pd.DataFrame) -> float:
     """% de la varianza de `ESCS_TREND` que es entre centros (0 = todos los centros
     igual de mixtos; cuanto más alto, más separados por nivel socioeconómico)."""
-    g = g.dropna(subset=['ESCS_TREND', 'CNTSCHID', 'W_FSTUWT'])
-    if g.empty:
+    estudiantes_pais = estudiantes_pais.dropna(subset=['ESCS_TREND', 'CNTSCHID', 'W_FSTUWT'])
+    if estudiantes_pais.empty:
         return np.nan
-    w, x = g['W_FSTUWT'], g['ESCS_TREND']
-    media = np.average(x, weights=w)
-    total = np.average((x - media) ** 2, weights=w)
-    por_centro = g.assign(_wx=w * x).groupby('CNTSCHID').agg(_w=('W_FSTUWT', 'sum'), _wx=('_wx', 'sum'))
-    por_centro['_m'] = por_centro['_wx'] / por_centro['_w']
-    entre = np.average((por_centro['_m'] - media) ** 2, weights=por_centro['_w'])
+    pesos, escs = estudiantes_pais['W_FSTUWT'], estudiantes_pais['ESCS_TREND']
+    media = np.average(escs, weights=pesos)
+    total = np.average((escs - media) ** 2, weights=pesos)
+    por_centro = estudiantes_pais.assign(_peso_por_escs=pesos * escs).groupby('CNTSCHID').agg(_peso_total=('W_FSTUWT', 'sum'), _peso_por_escs=('_peso_por_escs', 'sum'))
+    por_centro['_escs_medio_centro'] = por_centro['_peso_por_escs'] / por_centro['_peso_total']
+    entre = np.average((por_centro['_escs_medio_centro'] - media) ** 2, weights=por_centro['_peso_total'])
     return float(100 * entre / total) if total > 0 else np.nan
 
 
-def escs_de_centros(ruta_intermedios: str, año: int) -> pd.DataFrame:
+def escs_de_centros(ruta_raw_base: str, año: int) -> pd.DataFrame:
     """Media de `ESCS_TREND` de los alumnos de cada centro (ponderada por `W_FSTUWT`)."""
-    ruta, _ = rutas_datos_anuales(ruta_intermedios, año)
-    est = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND']).dropna(subset=['ESCS_TREND'])
-    est = est.assign(_wx=est['W_FSTUWT'] * est['ESCS_TREND'])
-    g = est.groupby(['CNT', 'CNTSCHID']).agg(_w=('W_FSTUWT', 'sum'), _wx=('_wx', 'sum'))
-    return (g['_wx'] / g['_w']).rename('escs_centro').reset_index()
+    ruta, _ = rutas_datos_anuales(ruta_raw_base, año)
+    estudiantes = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND']).dropna(subset=['ESCS_TREND'])
+    estudiantes = estudiantes.assign(_peso_por_escs=estudiantes['W_FSTUWT'] * estudiantes['ESCS_TREND'])
+    escs_por_centro = estudiantes.groupby(['CNT', 'CNTSCHID']).agg(_peso_total=('W_FSTUWT', 'sum'), _peso_por_escs=('_peso_por_escs', 'sum'))
+    return (escs_por_centro['_peso_por_escs'] / escs_por_centro['_peso_total']).rename('escs_centro').reset_index()
 
 
-def centros_pisa(ruta_intermedios: str, año: int) -> pd.DataFrame:
+def centros_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
     """Por país, con el peso del centro (`W_SCHGRNRABWT`): medias de recursos y
     financiación del centro, % de centros públicos (`SCHLTYPE` = 3), autonomía sobre
     recursos y **brecha de recursos** entre centros desfavorecidos y favorecidos
     (cuartil inferior menos superior de `ESCS_TREND` medio del centro). Un valor
     negativo en ratio, tamaño de clase o escasez significa que los desfavorecidos
     están mejor dotados; positivo en profesorado certificado, al revés."""
-    _, ruta = rutas_datos_anuales(ruta_intermedios, año)
+    _, ruta = rutas_datos_anuales(ruta_raw_base, año)
     nombres = pq.ParquetFile(ruta).schema.names
     financiacion = {k: primera(nombres, *v) for k, v in COLUMNAS_FINANCIACION.items()}
     renombrar = {  # nombre canónico -> columna de cada edición
@@ -183,37 +186,37 @@ def centros_pisa(ruta_intermedios: str, año: int) -> pd.DataFrame:
         'AUTONOMIA': primera(nombres, 'RESPRES', 'SRESPRES'),
         'MASTER': primera(nombres, 'PROPAT7'),
     }
-    cols = ['CNT', 'CNTSCHID', 'W_SCHGRNRABWT', 'STRATIO', 'CLSIZE', 'SCHSIZE', 'SCHLTYPE', 'EDUSHORT', 'STAFFSHORT']
-    cols = [c for c in cols if c in nombres] + [c for c in {**financiacion, **renombrar}.values() if c]
-    col = pd.read_parquet(ruta, columns=list(dict.fromkeys(cols)))
-    col = col.rename(columns={v: k for k, v in renombrar.items() if v})
-    for c in ('CERT', 'MASTER'):   # proporciones (0-1) -> %
-        if c in col:
-            col[c] = 100 * col[c]
-    col = col.merge(escs_de_centros(ruta_intermedios, año), on=['CNT', 'CNTSCHID'], how='left')
+    columnas_a_leer = ['CNT', 'CNTSCHID', 'W_SCHGRNRABWT', 'STRATIO', 'CLSIZE', 'SCHSIZE', 'SCHLTYPE', 'EDUSHORT', 'STAFFSHORT']
+    columnas_a_leer = [columna for columna in columnas_a_leer if columna in nombres] + [columna for columna in {**financiacion, **renombrar}.values() if columna]
+    colegios = pd.read_parquet(ruta, columns=list(dict.fromkeys(columnas_a_leer)))
+    colegios = colegios.rename(columns={v: k for k, v in renombrar.items() if v})
+    for columna in ('CERT', 'MASTER'):   # proporciones (0-1) -> %
+        if columna in colegios:
+            colegios[columna] = 100 * colegios[columna]
+    colegios = colegios.merge(escs_de_centros(ruta_raw_base, año), on=['CNT', 'CNTSCHID'], how='left')
 
     filas = []
-    for pais, g in col.groupby('CNT'):
-        w = g['W_SCHGRNRABWT']
-        fila = {'pais': pais, 'pisa_n_centros': len(g),
-                'pisa_stratio': media_ponderada(g['STRATIO'], w),
-                'pisa_clsize': media_ponderada(g['CLSIZE'], w),
-                'pisa_schsize': media_ponderada(g['SCHSIZE'], w),
-                'pisa_pct_centros_publicos': 100 * media_ponderada((g['SCHLTYPE'] == 3).where(g['SCHLTYPE'].notna()).astype(float), w)}
+    for pais, centros_pais in colegios.groupby('CNT'):
+        pesos_centros = centros_pais['W_SCHGRNRABWT']
+        fila = {'pais': pais, 'pisa_numero_centros': len(centros_pais),
+                'pisa_alumnos_por_profesor': media_ponderada(centros_pais['STRATIO'], pesos_centros),
+                'pisa_tamaño_clase': media_ponderada(centros_pais['CLSIZE'], pesos_centros),
+                'pisa_tamaño_centro': media_ponderada(centros_pais['SCHSIZE'], pesos_centros),
+                'pisa_centros_publicos_pct': 100 * media_ponderada((centros_pais['SCHLTYPE'] == 3).where(centros_pais['SCHLTYPE'].notna()).astype(float), pesos_centros)}
         for nuevo, origen in financiacion.items():
-            fila[nuevo] = media_ponderada(g[origen], w) if origen else np.nan
+            fila[nuevo] = media_ponderada(centros_pais[origen], pesos_centros) if origen else np.nan
         for nuevo, origen in (('pisa_profesores_certificados_pct', 'CERT'), ('pisa_profesores_master_pct', 'MASTER'),
                               ('pisa_ordenadores_por_alumno', 'ORDENADORES'), ('pisa_autonomia_recursos', 'AUTONOMIA'),
-                              ('pisa_edushort', 'EDUSHORT'), ('pisa_staffshort', 'STAFFSHORT')):
-            fila[nuevo] = media_ponderada(g[origen], w) if origen in g else np.nan
+                              ('pisa_escasez_material_educativo', 'EDUSHORT'), ('pisa_escasez_personal', 'STAFFSHORT')):
+            fila[nuevo] = media_ponderada(centros_pais[origen], pesos_centros) if origen in centros_pais else np.nan
         # Brecha de recursos entre el cuartil de centros más desfavorecido y el más favorecido
-        q1, q3 = g['escs_centro'].quantile([0.25, 0.75])
-        desfav, fav = g[g['escs_centro'] <= q1], g[g['escs_centro'] >= q3]
-        for nombre, origen in (('stratio', 'STRATIO'), ('clsize', 'CLSIZE'), ('certificados', 'CERT'),
-                               ('edushort', 'EDUSHORT'), ('staffshort', 'STAFFSHORT')):
-            if origen in g:
-                fila[f'pisa_brecha_{nombre}'] = (media_ponderada(desfav[origen], desfav['W_SCHGRNRABWT'])
-                                                 - media_ponderada(fav[origen], fav['W_SCHGRNRABWT']))
+        cuartil_inferior, cuartil_superior = centros_pais['escs_centro'].quantile([0.25, 0.75])
+        centros_desfavorecidos, centros_favorecidos = centros_pais[centros_pais['escs_centro'] <= cuartil_inferior], centros_pais[centros_pais['escs_centro'] >= cuartil_superior]
+        for nombre, origen in (('alumnos_por_profesor', 'STRATIO'), ('tamaño_clase', 'CLSIZE'), ('profesorado_certificado', 'CERT'),
+                               ('escasez_material', 'EDUSHORT'), ('escasez_personal', 'STAFFSHORT')):
+            if origen in centros_pais:
+                fila[f'pisa_brecha_{nombre}'] = (media_ponderada(centros_desfavorecidos[origen], centros_desfavorecidos['W_SCHGRNRABWT'])
+                                                 - media_ponderada(centros_favorecidos[origen], centros_favorecidos['W_SCHGRNRABWT']))
             else:
                 fila[f'pisa_brecha_{nombre}'] = np.nan
         filas.append(fila)
@@ -222,23 +225,23 @@ def centros_pisa(ruta_intermedios: str, año: int) -> pd.DataFrame:
 
 # ---------------------------------------------------------------- series externas
 
-def serie(df: pd.DataFrame, **filtros) -> pd.DataFrame:
+def serie(datos: pd.DataFrame, **filtros) -> pd.DataFrame:
     """Serie anual (filas: años; columnas: países) con los filtros dados. Falla si
     quedan duplicados país-año, señal de que falta un filtro."""
     for k, v in filtros.items():
-        df = df[df[k] == v]
-    assert not df.duplicated(['pais', 'año']).any(), f'duplicados con {filtros}'
-    return df.pivot(index='año', columns='pais', values='valor').reindex(AÑOS_SERIE)
+        datos = datos[datos[k] == v]
+    assert not datos.duplicated(['pais', 'año']).any(), f'duplicados con {filtros}'
+    return datos.pivot(index='año', columns='pais', values='valor').reindex(AÑOS_SERIE)
 
 
-def a_usd_ppp(xdc_corrientes: pd.DataFrame, deflactor: pd.DataFrame, ppp: pd.DataFrame, base: int = AÑO_BASE) -> pd.DataFrame:
+def a_usd_ppp(xdc_corrientes: pd.DataFrame, deflactor: pd.DataFrame, factor_ppp: pd.DataFrame, base: int = AÑO_BASE) -> pd.DataFrame:
     """Series anuales en moneda nacional a precios corrientes -> USD PPP a precios constantes de `base`
     (el método de la OCDE): se deflactan con el deflactor del PIB del país y se convierten con su
     factor PPP del año `base`. Así son comparables entre países y años, y con el gasto por alumno."""
-    return xdc_corrientes * (deflactor.loc[base] / deflactor) / ppp.loc[base]
+    return xdc_corrientes * (deflactor.loc[base] / deflactor) / factor_ppp.loc[base]
 
 
-def en(serie_anual: pd.DataFrame, año: int) -> pd.Series:
+def valor_en_año(serie_anual: pd.DataFrame, año: int) -> pd.Series:
     """Valor de cada país en un año (NaN si no hay)."""
     return serie_anual.loc[año]
 
@@ -251,8 +254,8 @@ def interpolada(serie_anual: pd.DataFrame) -> pd.DataFrame:
 def media_previa(serie_anual: pd.DataFrame, año: int, ventana: int = 4, minimo: int = 3) -> pd.Series:
     """Media de los `ventana` años hasta `año` (incluido), sobre la serie interpolada.
     NaN si hay menos de `minimo` años con dato."""
-    w = interpolada(serie_anual).loc[año - ventana + 1:año]
-    return w.mean().where(w.notna().sum() >= minimo)
+    ventana_interpolada = interpolada(serie_anual).loc[año - ventana + 1:año]
+    return ventana_interpolada.mean().where(ventana_interpolada.notna().sum() >= minimo)
 
 
 def acumulado_6_15(primaria: pd.DataFrame, secundaria1: pd.DataFrame, año: int) -> pd.Series:
@@ -260,49 +263,49 @@ def acumulado_6_15(primaria: pd.DataFrame, secundaria1: pd.DataFrame, año: int)
     en `año`: 6 años de primaria (t-9 a t-4) y 4 de secundaria 1.ª etapa (t-3 a t),
     sobre series interpoladas. Aproximado (no usa la duración teórica de cada país).
     NaN si falta algún año."""
-    p = interpolada(primaria).loc[año - 9:año - 4]
-    s = interpolada(secundaria1).loc[año - 3:año]
-    completo = (p.notna().sum() == 6) & (s.notna().sum() == 4)
-    return (p.sum() + s.sum()).where(completo)
+    gasto_primaria = interpolada(primaria).loc[año - 9:año - 4]
+    gasto_secundaria = interpolada(secundaria1).loc[año - 3:año]
+    completo = (gasto_primaria.notna().sum() == 6) & (gasto_secundaria.notna().sum() == 4)
+    return (gasto_primaria.sum() + gasto_secundaria.sum()).where(completo)
 
 
-def gini_edicion(gini_ocde: pd.DataFrame, gini_bm: pd.DataFrame, año: int) -> pd.DataFrame:
+def gini_edicion(gini_ocde: pd.DataFrame, gini_banco_mundial: pd.DataFrame, año: int) -> pd.DataFrame:
     """Gini (0-1) de la renta disponible de cada país en la edición `año`. Se toma la observación más cercana al
     año (como mucho ±1); a igual distancia, la de la OCDE antes que la del Banco Mundial (que va de 0 a 100) y,
     si aún empatan, el año anterior. Devuelve `gini`, `gini_fuente` y `gini_año`, indexado por país."""
-    o = gini_ocde[['pais', 'año', 'valor']].assign(fuente='OCDE', prioridad=0)
-    b = gini_bm.dropna(subset=['valor']).assign(valor=lambda d: d['valor'] / 100, fuente='Banco Mundial', prioridad=1)
-    c = pd.concat([o, b[['pais', 'año', 'valor', 'fuente', 'prioridad']]])
-    c['año'] = c['año'].astype(int)
-    c = c[c['año'].between(año - 1, año + 1)].assign(distancia=lambda d: (d['año'] - año).abs(), posterior=lambda d: d['año'] > año)
-    mejor = c.sort_values(['pais', 'distancia', 'prioridad', 'posterior']).groupby('pais').head(1).set_index('pais')
+    gini_ocde_filas = gini_ocde[['pais', 'año', 'valor']].assign(fuente='OCDE', prioridad=0)
+    gini_banco_mundial_filas = gini_banco_mundial.dropna(subset=['valor']).assign(valor=lambda datos: datos['valor'] / 100, fuente='Banco Mundial', prioridad=1)
+    observaciones = pd.concat([gini_ocde_filas, gini_banco_mundial_filas[['pais', 'año', 'valor', 'fuente', 'prioridad']]])
+    observaciones['año'] = observaciones['año'].astype(int)
+    observaciones = observaciones[observaciones['año'].between(año - 1, año + 1)].assign(distancia=lambda datos: (datos['año'] - año).abs(), posterior=lambda datos: datos['año'] > año)
+    mejor = observaciones.sort_values(['pais', 'distancia', 'prioridad', 'posterior']).groupby('pais').head(1).set_index('pais')
     return mejor[['valor', 'fuente', 'año']].rename(columns={'valor': 'gini', 'fuente': 'gini_fuente', 'año': 'gini_año'})
 
 
 def variables_externas(datos: dict, año: int) -> pd.DataFrame:
     """Variables de presupuesto, renta y personal de cada país en la edición `año`.
     `datos`: dict con los DataFrames cargados con `cargar_oecd` (ver `construir_tabla`)."""
-    g = datos['gasto']
+    gasto_por_alumno = datos['gasto']
     base = dict(precios='Q', unidad='USD_PPP_ST', fuente='_T', institucion='INST_EDU', tipo_gasto='DIR_EXP')
-    por_nivel = {n: serie(g, nivel=f'ISCED11_{n}', **base) for n in ('1', '2', '3', '2_3')}
+    por_nivel = {nivel: serie(gasto_por_alumno, nivel=f'ISCED11_{nivel}', **base) for nivel in ('1', '2', '3', '2_3')}
 
-    v = {}
+    variables = {}
     # --- Cuánto: gasto por alumno (USD PPP, precios constantes), en el año de la prueba
-    for n, s in por_nivel.items():
-        v[f'gasto_alumno_{n}'] = en(s, año)
-    v['gasto_alumno_2_3_media_4a'] = media_previa(por_nivel['2_3'], año)
-    v['gasto_acumulado_6_15'] = acumulado_6_15(por_nivel['1'], por_nivel['2'], año)
-    v['gasto_alumno_2_3_pct_pib_pc'] = en(serie(
-        g, nivel='ISCED11_2_3', unidad='PT_B1GQ_POP', fuente='_T', institucion='INST_EDU', tipo_gasto='DIR_EXP'), año)
+    for nivel, serie_nivel in por_nivel.items():
+        variables[f'gasto_alumno_{NOMBRE_NIVEL_GASTO[nivel]}_usd_ppp'] = valor_en_año(serie_nivel, año)
+    variables['gasto_alumno_secundaria_media_4_años_usd_ppp'] = media_previa(por_nivel['2_3'], año)
+    variables['gasto_acumulado_alumno_6_a_15_años_usd_ppp'] = acumulado_6_15(por_nivel['1'], por_nivel['2'], año)
+    variables['gasto_alumno_secundaria_pct_pib_per_capita'] = valor_en_año(serie(
+        gasto_por_alumno, nivel='ISCED11_2_3', unidad='PT_B1GQ_POP', fuente='_T', institucion='INST_EDU', tipo_gasto='DIR_EXP'), año)
 
     # --- Esfuerzo y origen de la financiación
-    f = datos['gasto_pib']
-    v['gasto_pib_pct_1T4'] = en(serie(f, nivel='ISCED11_1T4', unidad='PT_B1GQ', fuente='_T', precios='_Z'), año)
+    gasto_pib_y_fuentes = datos['gasto_pib']
+    variables['gasto_pct_pib_primaria_a_postsecundaria'] = valor_en_año(serie(gasto_pib_y_fuentes, nivel='ISCED11_1T4', unidad='PT_B1GQ', fuente='_T', precios='_Z'), año)
     for nombre, fuente in (('publica', 'S13'), ('privada', 'S1D_NON_EDU'), ('exterior', 'S2')):
-        v[f'financiacion_{nombre}_pct'] = en(serie(f, nivel='ISCED11_2_3', unidad='PT_EXP', fuente=fuente, precios='_Z'), año)
-    v['gasto_pct_gasto_publico_1T4'] = en(serie(datos['gasto_pct_publico'], nivel='ISCED11_1T4'), año)
+        variables[f'financiacion_{nombre}_pct_gasto_secundaria'] = valor_en_año(serie(gasto_pib_y_fuentes, nivel='ISCED11_2_3', unidad='PT_EXP', fuente=fuente, precios='_Z'), año)
+    variables['pct_gasto_publico_en_primaria_a_postsecundaria'] = valor_en_año(serie(datos['gasto_pct_publico'], nivel='ISCED11_1T4'), año)
 
-    # --- Cómo: composición del gasto total de sec. 1.ª+2.ª (corriente + capital)
+    # --- Cómo: composición del gasto total de secundaria 1.ª+2.ª (corriente + capital)
     comun = dict(nivel='ISCED11_2_3', unidad='USD_PPP', precios='Q', fuente='_T', institucion='INST_EDU')
     corriente = serie(datos['gasto_corriente_capital'], tipo_gasto='CUR', **comun)
     capital = serie(datos['gasto_corriente_capital'], tipo_gasto='CAP', **comun)
@@ -310,160 +313,152 @@ def variables_externas(datos: dict, año: int) -> pd.DataFrame:
     personal = serie(datos['gasto_personal'], tipo_gasto='CUR_COMP', **comun)
     docentes = serie(datos['gasto_personal'], tipo_gasto='CUR_COMPT', **comun)
     no_docentes = serie(datos['gasto_personal'], tipo_gasto='CUR_COMPO', **comun)
-    v['gasto_personal_pct'] = 100 * en(personal / total, año)
-    v['gasto_docentes_pct'] = 100 * en(docentes / total, año)
-    v['gasto_nodocentes_pct'] = (100 * en(no_docentes / total, año)).where(lambda x: x != 0)   # 0 = incluido en docentes
-    v['gasto_capital_pct'] = 100 * en(capital / total, año)
-    # Gasto total (no por alumno) de sec. 1.ª+2.ª en USD PPP constantes (la OCDE lo da en millones; 0 = no disponible)
-    for nombre, s in (('corriente', corriente), ('capital', capital), ('personal', personal),
-                      ('docentes', docentes), ('nodocentes', no_docentes)):
-        v[f'gasto_total_{nombre}_2_3'] = (1e6 * en(s, año)).where(lambda x: x != 0)
-    v['gasto_otros_corrientes_pct'] = 100 - v['gasto_personal_pct'] - v['gasto_capital_pct']
+    variables['pct_gasto_secundaria_en_personal'] = 100 * valor_en_año(personal / total, año)
+    variables['pct_gasto_secundaria_en_docentes'] = 100 * valor_en_año(docentes / total, año)
+    variables['pct_gasto_secundaria_en_personal_no_docente'] = (100 * valor_en_año(no_docentes / total, año)).where(lambda valores: valores != 0)   # 0 = incluido en docentes
+    variables['pct_gasto_secundaria_en_capital'] = 100 * valor_en_año(capital / total, año)
+    # Gasto total (no por alumno) de secundaria 1.ª+2.ª en USD PPP constantes (la OCDE lo da en millones; 0 = no disponible)
+    for nombre, serie_nivel in (('corriente', corriente), ('capital', capital), ('personal', personal),
+                      ('docentes', docentes), ('personal_no_docente', no_docentes)):
+        variables[f'gasto_total_{nombre}_secundaria_usd_ppp'] = (1e6 * valor_en_año(serie_nivel, año)).where(lambda valores: valores != 0)
+    variables['pct_gasto_secundaria_en_otros_corrientes'] = 100 - variables['pct_gasto_secundaria_en_personal'] - variables['pct_gasto_secundaria_en_capital']
 
     # Servicios básicos frente a auxiliares (transporte, comidas, alojamiento)
     tipo = datos['gasto_tipo']
     base_t = dict(nivel='ISCED11_2_3', unidad='USD_PPP_ST')
     basicos, auxiliares = serie(tipo, tipo_gasto='CORE', **base_t), serie(tipo, tipo_gasto='ASERV', **base_t)
-    v['servicios_auxiliares_pct_2_3'] = 100 * en(auxiliares / (basicos + auxiliares), año)
-    v['gasto_alumno_basicos_2_3'] = en(basicos, año)
-    v['gasto_alumno_auxiliares_2_3'] = en(auxiliares, año)
+    variables['servicios_auxiliares_pct_gasto_alumno_secundaria'] = 100 * valor_en_año(auxiliares / (basicos + auxiliares), año)
+    variables['gasto_alumno_secundaria_servicios_basicos_usd_ppp'] = valor_en_año(basicos, año)
+    variables['gasto_alumno_secundaria_servicios_auxiliares_usd_ppp'] = valor_en_año(auxiliares, año)
 
     # --- Cómo: reparto por nivel y tipo de enseñanza (gasto por alumno, relativo a secundaria)
     def por_alumno(nivel):
-        return en(serie(g, nivel=nivel, **base), año)
-    v['gasto_alumno_preprimaria'] = por_alumno('ISCED11_02').where(lambda x: x != 0)   # 0 = dato no disponible
-    v['gasto_alumno_terciaria'] = por_alumno('ISCED11_5T8')
-    v['ratio_preprimaria_sec'] = v['gasto_alumno_preprimaria'] / v['gasto_alumno_2_3']
-    v['ratio_terciaria_sec'] = v['gasto_alumno_terciaria'] / v['gasto_alumno_2_3']
-    v['ratio_fp_general_sec2'] = por_alumno('ISCED11_35') / por_alumno('ISCED11_34')
+        return valor_en_año(serie(gasto_por_alumno, nivel=nivel, **base), año)
+    variables['gasto_alumno_preprimaria_usd_ppp'] = por_alumno('ISCED11_02').where(lambda valores: valores != 0)   # 0 = dato no disponible
+    variables['ratio_gasto_preprimaria_sobre_secundaria'] = variables['gasto_alumno_preprimaria_usd_ppp'] / variables['gasto_alumno_secundaria_usd_ppp']
+    variables['ratio_gasto_fp_sobre_general_secundaria_segunda_etapa'] = por_alumno('ISCED11_35') / por_alumno('ISCED11_34')
 
     # --- Cuándo: escolarización temprana y repetición
-    esc = datos['escolarizacion']
+    escolarizacion = datos['escolarizacion']
     for edad, nombre in (('Y3', '3'), ('Y4', '4'), ('Y15', '15')):
-        v[f'escolarizacion_{nombre}_años_pct'] = en(serie(esc, nivel='_T', edad=edad), año)
-    v['repeticion_pct_sec1'] = en(serie(datos['repeticion'], nivel='ISCED11_24'), año)
-    for k in ('escolarizacion_3_años_pct', 'escolarizacion_4_años_pct', 'escolarizacion_15_años_pct'):
-        v[k] = v[k].where(lambda x: x != 0)   # 0% de escolarización a esas edades = dato no disponible (p. ej. Canadá)
+        variables[f'escolarizacion_{nombre}_años_pct'] = valor_en_año(serie(escolarizacion, nivel='_T', edad=edad), año)
+    variables['repeticion_pct_secundaria_primera_etapa'] = valor_en_año(serie(datos['repeticion'], nivel='ISCED11_24'), año)
+    for nombre_columna in ('escolarizacion_3_años_pct', 'escolarizacion_4_años_pct', 'escolarizacion_15_años_pct'):
+        variables[nombre_columna] = variables[nombre_columna].where(lambda valores: valores != 0)   # 0% de escolarización a esas edades = dato no disponible (p. ej. Canadá)
 
     # --- Renta y tamaño
-    ref = datos['referencia']
-    pib_pc_xdc = serie(ref, medida='GDP_CAPITA', unidad='XDC_PS', precios='V')
-    deflactor, ppp = serie(ref, medida='GDP_DEFLATOR'), serie(ref, medida='PPPGDP')
-    v['pib_pc_usd_ppp'] = en(a_usd_ppp(pib_pc_xdc, deflactor, ppp), año)
-    v['poblacion'] = 1000 * en(serie(ref, medida='POP'), año)   # la OCDE la da en miles
-    v['gasto_publico_total_pct_pib'] = en(serie(ref, medida='T_PUB_EXP', unidad='PT_B1GQ'), año)
-    v['matricula_fte_2_3'] = en(serie(datos['matricula'], nivel='ISCED11_2_3'), año)
+    estadisticas_referencia = datos['referencia']
+    pib_per_capita_moneda_local = serie(estadisticas_referencia, medida='GDP_CAPITA', unidad='XDC_PS', precios='V')
+    deflactor, factor_ppp = serie(estadisticas_referencia, medida='GDP_DEFLATOR'), serie(estadisticas_referencia, medida='PPPGDP')
+    variables['pib_per_capita_usd_ppp'] = valor_en_año(a_usd_ppp(pib_per_capita_moneda_local, deflactor, factor_ppp), año)
+    variables['poblacion'] = 1000 * valor_en_año(serie(estadisticas_referencia, medida='POP'), año)   # la OCDE la da en miles
+    variables['gasto_publico_total_pct_pib'] = valor_en_año(serie(estadisticas_referencia, medida='T_PUB_EXP', unidad='PT_B1GQ'), año)
+    variables['matricula_secundaria_equivalente_tiempo_completo'] = valor_en_año(serie(datos['matricula'], nivel='ISCED11_2_3'), año)
 
     # --- Docentes: pago, dotación y perfil
-    sal = datos['salarios_legales']
-    for etiqueta, exp in (('inicial', 'EXP0'), ('15a', 'EXP15')):
-        salario_xdc = serie(sal, nivel='ISCED11_24', unidad='XDC', PERS_EXP_LEV=exp)
-        v[f'salario_legal_{etiqueta}_pct_pib_pc'] = 100 * en(salario_xdc / pib_pc_xdc, año)
-        v[f'salario_legal_{etiqueta}_usd_ppp'] = en(a_usd_ppp(salario_xdc, deflactor, ppp), año)
-    v['salario_real_indice_2015'] = en(serie(datos['salarios_reales'], nivel='ISCED11_24', unidad='IX'), año)
-    v['horas_docencia_sec1'] = en(serie(datos['horas_docencia'], nivel='ISCED11_24'), año)
-    v['alumnos_por_docente_sec1'] = en(serie(datos['alumnos_docente'], nivel='ISCED11_2', institucion='INST_EDU'), año)
-    v['tamaño_clase_sec1'] = en(serie(datos['tamaño_clase'], nivel='ISCED11_2', institucion='INST_EDU'), año)
+    salarios_legales = datos['salarios_legales']
+    for etiqueta, experiencia in (('inicial', 'EXP0'), ('15_años_experiencia', 'EXP15')):
+        salario_xdc = serie(salarios_legales, nivel='ISCED11_24', unidad='XDC', PERS_EXP_LEV=experiencia)
+        variables[f'salario_legal_docente_{etiqueta}_pct_pib_per_capita'] = 100 * valor_en_año(salario_xdc / pib_per_capita_moneda_local, año)
+        variables[f'salario_legal_docente_{etiqueta}_usd_ppp'] = valor_en_año(a_usd_ppp(salario_xdc, deflactor, factor_ppp), año)
+    variables['salario_real_docente_indice_base_2015'] = valor_en_año(serie(datos['salarios_reales'], nivel='ISCED11_24', unidad='IX'), año)
+    variables['horas_docencia_anuales_secundaria_primera_etapa'] = valor_en_año(serie(datos['horas_docencia'], nivel='ISCED11_24'), año)
+    variables['alumnos_por_docente_secundaria_primera_etapa'] = valor_en_año(serie(datos['alumnos_docente'], nivel='ISCED11_2', institucion='INST_EDU'), año)
+    variables['tamaño_clase_secundaria_primera_etapa'] = valor_en_año(serie(datos['tamaño_clase'], nivel='ISCED11_2', institucion='INST_EDU'), año)
     edad = datos['docentes_edad']
-    v['docentes_50mas_pct'] = en(serie(edad, edad='Y_GE50'), año)
-    v['docentes_menos_30_pct'] = en(serie(edad, edad='Y_LT30'), año)
+    variables['docentes_50_o_mas_años_pct'] = valor_en_año(serie(edad, edad='Y_GE50'), año)
+    variables['docentes_menos_de_30_años_pct'] = valor_en_año(serie(edad, edad='Y_LT30'), año)
 
     # --- Palancas del gasto por alumno: pago por docente x docentes por alumno
-    v['docentes_por_100_alumnos'] = 100 / v['alumnos_por_docente_sec1']
-    v['coste_docentes_por_alumno_pct_pib_pc'] = v['salario_legal_15a_pct_pib_pc'] / v['alumnos_por_docente_sec1']
-    v['salario_legal_15a_por_1000h'] = 1000 * v['salario_legal_15a_pct_pib_pc'] / v['horas_docencia_sec1']
-
-    # --- Eurostat (solo UE, gasto público, PPS): proxy para rellenar, no se mezcla con el de la OCDE
-    eu = datos['eurostat']
-    for n, nivel in (('sec1', 'ED2'), ('sec2', 'ED3')):
-        v[f'eurostat_gasto_publico_alumno_{n}_pps'] = en(serie(eu, nivel=nivel, unidad='PPS'), año)
+    variables['docentes_por_100_alumnos'] = 100 / variables['alumnos_por_docente_secundaria_primera_etapa']
+    variables['coste_docente_por_alumno_pct_pib_per_capita'] = variables['salario_legal_docente_15_años_experiencia_pct_pib_per_capita'] / variables['alumnos_por_docente_secundaria_primera_etapa']
+    variables['salario_legal_docente_15_años_pct_pib_per_capita_por_1000_horas'] = 1000 * variables['salario_legal_docente_15_años_experiencia_pct_pib_per_capita'] / variables['horas_docencia_anuales_secundaria_primera_etapa']
 
     # --- Desigualdad: Gini de la renta disponible
-    g = gini_edicion(datos['gini_ocde'], datos['gini_bm'], año)
-    v['gini'], v['gini_fuente'], v['gini_año'] = g['gini'], g['gini_fuente'], g['gini_año']
+    gini_por_pais = gini_edicion(datos['gini_ocde'], datos['gini_banco_mundial'], año)
+    variables['gini'], variables['gini_fuente'], variables['gini_año'] = gini_por_pais['gini'], gini_por_pais['gini_fuente'], gini_por_pais['gini_año']
 
-    return pd.DataFrame(v).reindex(PAISES_OCDE_TODAS_LAS_EDICIONES).rename_axis('pais').reset_index()
+    return pd.DataFrame(variables).reindex(PAISES_OCDE_TODAS_LAS_EDICIONES).rename_axis('pais').reset_index()
 
 
 # Niveles de la serie anual de gasto por alumno
-NIVELES_SERIE_ANUAL = {'preprimaria': 'ISCED11_02', '1': 'ISCED11_1', '2': 'ISCED11_2', '3': 'ISCED11_3',
-                       '2_3': 'ISCED11_2_3', 'terciaria': 'ISCED11_5T8'}
+NIVELES_SERIE_ANUAL = {'preprimaria': 'ISCED11_02', 'primaria': 'ISCED11_1', 'secundaria_primera_etapa': 'ISCED11_2',
+                       'secundaria_segunda_etapa': 'ISCED11_3', 'secundaria': 'ISCED11_2_3'}
 
 
 def serie_anual_presupuesto(ruta_externos: str, inicio: int = 2000, fin: int = 2024) -> pd.DataFrame:
     """Gasto por alumno y PIB per cápita (USD PPP constantes de 2020) por país y año, para construir
     después medias o acumulados de años anteriores. Una fila por país y año; mismos nombres de
     columna que la tabla por edición. Sin interpolar: los huecos son NaN (en preprimaria, 0 = no disponible)."""
-    c = lambda nombre: cargar_oecd(os.path.join(ruta_externos, f'{nombre}.csv'))
-    g, ref = c('gasto_por_alumno'), c('estadisticas_referencia')
+    leer_csv_externo = lambda nombre: cargar_oecd(os.path.join(ruta_externos, f'{nombre}.csv'))
+    gasto_por_alumno, estadisticas_referencia = leer_csv_externo('gasto_por_alumno'), leer_csv_externo('estadisticas_referencia')
     base = dict(precios='Q', unidad='USD_PPP_ST', fuente='_T', institucion='INST_EDU', tipo_gasto='DIR_EXP')
     series = {}
     for nombre, nivel in NIVELES_SERIE_ANUAL.items():
-        s = serie(g, nivel=nivel, **base)
-        series[f'gasto_alumno_{nombre}'] = s.where(s != 0) if nombre == 'preprimaria' else s
-    series['pib_pc_usd_ppp'] = a_usd_ppp(serie(ref, medida='GDP_CAPITA', unidad='XDC_PS', precios='V'),
-                                         serie(ref, medida='GDP_DEFLATOR'), serie(ref, medida='PPPGDP'))
-    df = pd.DataFrame({k: s.loc[inicio:fin].stack(future_stack=True) for k, s in series.items()})
-    df = df.rename_axis(['año', 'pais']).reset_index()
-    return df.sort_values(['pais', 'año']).reset_index(drop=True)[['pais', 'año'] + list(series)]
+        serie_nivel = serie(gasto_por_alumno, nivel=nivel, **base)
+        series[f'gasto_alumno_{nombre}_usd_ppp'] = serie_nivel.where(serie_nivel != 0) if nombre == 'preprimaria' else serie_nivel
+    series['pib_per_capita_usd_ppp'] = a_usd_ppp(serie(estadisticas_referencia, medida='GDP_CAPITA', unidad='XDC_PS', precios='V'),
+                                         serie(estadisticas_referencia, medida='GDP_DEFLATOR'), serie(estadisticas_referencia, medida='PPPGDP'))
+    serie_larga = pd.DataFrame({nombre_columna: serie_nivel.loc[inicio:fin].stack(future_stack=True) for nombre_columna, serie_nivel in series.items()})
+    serie_larga = serie_larga.rename_axis(['año', 'pais']).reset_index()
+    return serie_larga.sort_values(['pais', 'año']).reset_index(drop=True)[['pais', 'año'] + list(series)]
 
 
-def construir_tabla(ruta_intermedios: str, ruta_externos: str, ediciones: list[int] | None = None) -> pd.DataFrame:
+def construir_tabla(ruta_raw_base: str, ruta_externos: str, ediciones: list[int] | None = None) -> pd.DataFrame:
     """Tabla país-edición (una fila por país y edición): PISA + variables externas."""
     ediciones = ediciones or EDICIONES
-    c = lambda nombre: cargar_oecd(os.path.join(ruta_externos, f'{nombre}.csv'))
-    pib = pd.read_csv(os.path.join(ruta_externos, 'pib_per_capita_ppp.csv')).dropna(subset=['valor'])
+    leer_csv_externo = lambda nombre: cargar_oecd(os.path.join(ruta_externos, f'{nombre}.csv'))
+    pib_per_capita_banco_mundial = pd.read_csv(os.path.join(ruta_externos, 'pib_per_capita_ppp.csv')).dropna(subset=['valor'])
     datos = {
-        'gasto': c('gasto_por_alumno'), 'gasto_pib': c('gasto_pib_y_fuentes'),
-        'gasto_pct_publico': c('gasto_pct_gasto_publico'), 'gasto_personal': c('gasto_personal'),
-        'gasto_corriente_capital': c('gasto_corriente_capital'), 'gasto_tipo': c('gasto_alumno_tipo'),
-        'matricula': c('matricula_equivalente_tc'), 'referencia': c('estadisticas_referencia'),
-        'salarios_reales': c('salarios_reales_docentes'), 'salarios_legales': c('salarios_legales_docentes'),
-        'horas_docencia': c('horas_docencia_legales'), 'alumnos_docente': c('alumnos_por_docente'),
-        'tamaño_clase': c('tamaño_de_clase'), 'docentes_edad': c('docentes_edad'), 'repeticion': c('repeticion'),
-        'escolarizacion': c('escolarizacion_por_edad'),
-        'eurostat': pd.read_csv(os.path.join(ruta_externos, 'gasto_publico_por_alumno_eurostat.csv')),
-        'gini_ocde': c('gini_ocde'), 'gini_bm': pd.read_csv(os.path.join(ruta_externos, 'gini_banco_mundial.csv')),
+        'gasto': leer_csv_externo('gasto_por_alumno'), 'gasto_pib': leer_csv_externo('gasto_pib_y_fuentes'),
+        'gasto_pct_publico': leer_csv_externo('gasto_pct_gasto_publico'), 'gasto_personal': leer_csv_externo('gasto_personal'),
+        'gasto_corriente_capital': leer_csv_externo('gasto_corriente_capital'), 'gasto_tipo': leer_csv_externo('gasto_alumno_tipo'),
+        'matricula': leer_csv_externo('matricula_equivalente_tc'), 'referencia': leer_csv_externo('estadisticas_referencia'),
+        'salarios_reales': leer_csv_externo('salarios_reales_docentes'), 'salarios_legales': leer_csv_externo('salarios_legales_docentes'),
+        'horas_docencia': leer_csv_externo('horas_docencia_legales'), 'alumnos_docente': leer_csv_externo('alumnos_por_docente'),
+        'tamaño_clase': leer_csv_externo('tamaño_de_clase'), 'docentes_edad': leer_csv_externo('docentes_edad'), 'repeticion': leer_csv_externo('repeticion'),
+        'escolarizacion': leer_csv_externo('escolarizacion_por_edad'),
+        'gini_ocde': leer_csv_externo('gini_ocde'), 'gini_banco_mundial': pd.read_csv(os.path.join(ruta_externos, 'gini_banco_mundial.csv')),
     }
-    pib_pc = serie(pib)
+    pib_per_capita_serie = serie(pib_per_capita_banco_mundial)
     tablas = []
     for año in ediciones:
-        t = resultados_pisa(ruta_intermedios, año).merge(centros_pisa(ruta_intermedios, año), on='pais', how='outer')
-        t = t.merge(variables_externas(datos, año), on='pais', how='left')
-        t['pib_pc_ppp_const2021'] = t['pais'].map(en(pib_pc, año))
-        t.insert(0, 'edicion', año)
-        tablas.append(t)
+        tabla_edicion = resultados_pisa(ruta_raw_base, año).merge(centros_pisa(ruta_raw_base, año), on='pais', how='outer')
+        tabla_edicion = tabla_edicion.merge(variables_externas(datos, año), on='pais', how='left')
+        tabla_edicion['pib_per_capita_banco_mundial_usd_ppp_2021'] = tabla_edicion['pais'].map(valor_en_año(pib_per_capita_serie, año))
+        tabla_edicion.insert(0, 'edicion', año)
+        tablas.append(tabla_edicion)
     return pd.concat(tablas, ignore_index=True).sort_values(['pais', 'edicion']).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------- análisis
 
-def residuo_ols(df: pd.DataFrame, y: str, xs: list[str]) -> tuple[pd.Series, pd.Series]:
-    """Regresión lineal de `y` sobre `xs` (con constante) en las filas completas.
-    Devuelve (residuos indexados como `df`, coeficientes). Un residuo positivo es un
-    rendimiento superior al que predicen las `xs`."""
-    d = df.dropna(subset=[y] + xs)
-    X = np.column_stack([np.ones(len(d))] + [d[x].to_numpy(float) for x in xs])
-    beta, *_ = np.linalg.lstsq(X, d[y].to_numpy(float), rcond=None)
-    residuo = pd.Series(d[y].to_numpy(float) - X @ beta, index=d.index, name=f'{y}_residuo')
-    return residuo, pd.Series(beta, index=['const'] + xs)
+def residuo_ols(datos: pd.DataFrame, variable_objetivo: str, variables_explicativas: list[str]) -> tuple[pd.Series, pd.Series]:
+    """Regresión lineal de `variable_objetivo` sobre `variables_explicativas` (con constante) en las filas completas.
+    Devuelve (residuos indexados como `datos`, coeficientes). Un residuo positivo es un
+    rendimiento superior al que predicen las `variables_explicativas`."""
+    datos_completos = datos.dropna(subset=[variable_objetivo] + variables_explicativas)
+    matriz_diseño = np.column_stack([np.ones(len(datos_completos))] + [datos_completos[variable].to_numpy(float) for variable in variables_explicativas])
+    coeficientes, *_ = np.linalg.lstsq(matriz_diseño, datos_completos[variable_objetivo].to_numpy(float), rcond=None)
+    residuo = pd.Series(datos_completos[variable_objetivo].to_numpy(float) - matriz_diseño @ coeficientes, index=datos_completos.index, name=f'{variable_objetivo}_residuo')
+    return residuo, pd.Series(coeficientes, index=['const'] + variables_explicativas)
 
 
-def agrupar_perfiles(df: pd.DataFrame, columnas: list[str], ks=range(2, 7), semilla: int = 42, min_tam: int = 5):
+def agrupar_perfiles(datos: pd.DataFrame, columnas: list[str], numeros_de_grupos=range(2, 7), semilla: int = 42, min_filas_por_grupo: int = 5):
     """K-means sobre `columnas` estandarizadas, en las filas completas. Elige el nº de
-    grupos con mayor silueta entre los que no dejan ningún grupo con menos de `min_tam`
-    filas. Devuelve (etiquetas indexadas como `df`, tabla de siluetas)."""
+    grupos con mayor silueta entre los que no dejan ningún grupo con menos de `min_filas_por_grupo`
+    filas. Devuelve (etiquetas indexadas como `datos`, tabla de siluetas)."""
     from sklearn.cluster import KMeans
     from sklearn.metrics import silhouette_score
-    d = df.dropna(subset=columnas)
-    z = (d[columnas] - d[columnas].mean()) / d[columnas].std(ddof=0)
+    datos_completos = datos.dropna(subset=columnas)
+    datos_estandarizados = (datos_completos[columnas] - datos_completos[columnas].mean()) / datos_completos[columnas].std(ddof=0)
     siluetas, modelos = {}, {}
-    for k in ks:
-        m = KMeans(n_clusters=k, n_init=20, random_state=semilla).fit(z)
-        siluetas[k], modelos[k] = silhouette_score(z, m.labels_), m
-    validos = [k for k in ks if np.bincount(modelos[k].labels_).min() >= min_tam] or list(ks)
+    for numero_grupos in numeros_de_grupos:
+        modelo = KMeans(n_clusters=numero_grupos, n_init=20, random_state=semilla).fit(datos_estandarizados)
+        siluetas[numero_grupos], modelos[numero_grupos] = silhouette_score(datos_estandarizados, modelo.labels_), modelo
+    validos = [numero_grupos for numero_grupos in numeros_de_grupos if np.bincount(modelos[numero_grupos].labels_).min() >= min_filas_por_grupo] or list(numeros_de_grupos)
     mejor = max(validos, key=siluetas.get)
-    etiquetas = pd.Series(modelos[mejor].labels_, index=d.index, name='perfil')
+    etiquetas = pd.Series(modelos[mejor].labels_, index=datos_completos.index, name='perfil')
     return etiquetas, pd.Series(siluetas, name='silueta')
 
 
@@ -472,52 +467,48 @@ def agrupar_perfiles(df: pd.DataFrame, columnas: list[str], ks=range(2, 7), semi
 # variable -> (series de origen, cálculo). Series: claves de `SERIES_OCDE` (= nombre del CSV en
 # data/raw/externos), 'pib_per_capita_ppp' (Banco Mundial), 'gasto_publico_por_alumno_eurostat'
 # o 'PISA' (tablas maestras: el cálculo indica la variable original).
-_N = {'1': 'primaria', '2': 'sec. 1.ª etapa', '3': 'sec. 2.ª etapa', '2_3': 'sec. 1.ª+2.ª etapa'}
+DESCRIPCION_NIVEL_GASTO = {'1': 'primaria', '2': 'secundaria 1.ª etapa', '3': 'secundaria 2.ª etapa', '2_3': 'secundaria 1.ª+2.ª etapa'}
 ORIGEN_VARIABLES = {
-    **{f'gasto_alumno_{n}': (('gasto_por_alumno',), f'USD PPP constantes por alumno, {d}') for n, d in _N.items()},
-    'gasto_alumno_2_3_media_4a': (('gasto_por_alumno',), 'Media de los 4 años hasta la edición (interpolación interior; mín. 3 años)'),
-    'gasto_acumulado_6_15': (('gasto_por_alumno',), 'Primaria t-9 a t-4 + sec. 1.ª etapa t-3 a t (interpolación interior)'),
-    'gasto_alumno_2_3_pct_pib_pc': (('gasto_por_alumno',), 'Mismo gasto como % del PIB per cápita (`PT_B1GQ_POP`)'),
-    'gasto_pib_pct_1T4': (('gasto_pib_y_fuentes',), '% del PIB, primaria a postsecundaria no terciaria (`PT_B1GQ`)'),
-    'financiacion_publica_pct': (('gasto_pib_y_fuentes',), '% del gasto de sec. 1.ª+2.ª que financia el gobierno (`S13`)'),
-    'financiacion_privada_pct': (('gasto_pib_y_fuentes',), '% financiado por el sector privado (`S1D_NON_EDU`)'),
-    'financiacion_exterior_pct': (('gasto_pib_y_fuentes',), '% financiado desde el exterior (`S2`)'),
-    'gasto_pct_gasto_publico_1T4': (('gasto_pct_gasto_publico',), '% del gasto público total, primaria a postsecundaria no terciaria'),
-    'gasto_personal_pct': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración total / (corriente + capital)'),
-    'gasto_docentes_pct': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración de docentes / (corriente + capital)'),
-    'gasto_nodocentes_pct': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración de otro personal / (corriente + capital); 0 = NaN'),
-    'gasto_capital_pct': (('gasto_corriente_capital',), '100 × capital / (corriente + capital)'),
-    'gasto_otros_corrientes_pct': (('gasto_personal', 'gasto_corriente_capital'), '100 − personal − capital'),
-    'servicios_auxiliares_pct_2_3': (('gasto_alumno_tipo',), '100 × auxiliares / (básicos + auxiliares), sec. 1.ª+2.ª'),
-    'gasto_alumno_preprimaria': (('gasto_por_alumno',), 'USD PPP por alumno, preprimaria (`ISCED11_02`); 0 = NaN'),
-    'gasto_alumno_terciaria': (('gasto_por_alumno',), 'USD PPP por alumno, terciaria (`ISCED11_5T8`)'),
-    'ratio_preprimaria_sec': (('gasto_por_alumno',), 'Gasto por alumno en preprimaria / sec. 1.ª+2.ª'),
-    'ratio_terciaria_sec': (('gasto_por_alumno',), 'Gasto por alumno en terciaria / sec. 1.ª+2.ª'),
-    'ratio_fp_general_sec2': (('gasto_por_alumno',), 'Gasto por alumno en FP (`ISCED11_35`) / general (`ISCED11_34`), sec. 2.ª etapa'),
+    **{f'gasto_alumno_{NOMBRE_NIVEL_GASTO[n]}_usd_ppp': (('gasto_por_alumno',), f'USD PPP constantes por alumno, {d}') for n, d in DESCRIPCION_NIVEL_GASTO.items()},
+    'gasto_alumno_secundaria_media_4_años_usd_ppp': (('gasto_por_alumno',), 'Media de los 4 años hasta la edición (interpolación interior; mín. 3 años)'),
+    'gasto_acumulado_alumno_6_a_15_años_usd_ppp': (('gasto_por_alumno',), 'Primaria t-9 a t-4 + secundaria 1.ª etapa t-3 a t (interpolación interior)'),
+    'gasto_alumno_secundaria_pct_pib_per_capita': (('gasto_por_alumno',), 'Mismo gasto como % del PIB per cápita (`PT_B1GQ_POP`)'),
+    'gasto_pct_pib_primaria_a_postsecundaria': (('gasto_pib_y_fuentes',), '% del PIB, primaria a postsecundaria no terciaria (`PT_B1GQ`)'),
+    'financiacion_publica_pct_gasto_secundaria': (('gasto_pib_y_fuentes',), '% del gasto de secundaria 1.ª+2.ª que financia el gobierno (`S13`)'),
+    'financiacion_privada_pct_gasto_secundaria': (('gasto_pib_y_fuentes',), '% financiado por el sector privado (`S1D_NON_EDU`)'),
+    'financiacion_exterior_pct_gasto_secundaria': (('gasto_pib_y_fuentes',), '% financiado desde el exterior (`S2`)'),
+    'pct_gasto_publico_en_primaria_a_postsecundaria': (('gasto_pct_gasto_publico',), '% del gasto público total, primaria a postsecundaria no terciaria'),
+    'pct_gasto_secundaria_en_personal': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración total / (corriente + capital)'),
+    'pct_gasto_secundaria_en_docentes': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración de docentes / (corriente + capital)'),
+    'pct_gasto_secundaria_en_personal_no_docente': (('gasto_personal', 'gasto_corriente_capital'), '100 × remuneración de otro personal / (corriente + capital); 0 = NaN'),
+    'pct_gasto_secundaria_en_capital': (('gasto_corriente_capital',), '100 × capital / (corriente + capital)'),
+    'pct_gasto_secundaria_en_otros_corrientes': (('gasto_personal', 'gasto_corriente_capital'), '100 − personal − capital'),
+    'servicios_auxiliares_pct_gasto_alumno_secundaria': (('gasto_alumno_tipo',), '100 × auxiliares / (básicos + auxiliares), secundaria 1.ª+2.ª'),
+    'gasto_alumno_preprimaria_usd_ppp': (('gasto_por_alumno',), 'USD PPP por alumno, preprimaria (`ISCED11_02`); 0 = NaN'),
+    'ratio_gasto_preprimaria_sobre_secundaria': (('gasto_por_alumno',), 'Gasto por alumno en preprimaria / secundaria 1.ª+2.ª'),
+    'ratio_gasto_fp_sobre_general_secundaria_segunda_etapa': (('gasto_por_alumno',), 'Gasto por alumno en FP (`ISCED11_35`) / general (`ISCED11_34`), secundaria 2.ª etapa'),
     'gasto_publico_total_pct_pib': (('estadisticas_referencia',), 'Gasto público total como % del PIB (`T_PUB_EXP`)'),
-    'matricula_fte_2_3': (('matricula_equivalente_tc',), 'Matrícula en equivalente a tiempo completo, sec. 1.ª+2.ª'),
-    'salario_legal_inicial_pct_pib_pc': (('salarios_legales_docentes', 'estadisticas_referencia'), '100 × salario legal inicial (moneda nacional) / PIB per cápita'),
-    'salario_legal_15a_pct_pib_pc': (('salarios_legales_docentes', 'estadisticas_referencia'), '100 × salario legal con 15 años de experiencia / PIB per cápita'),
-    'salario_real_indice_2015': (('salarios_reales_docentes',), 'Índice de salario real medio (base 2015 = 100)'),
-    'alumnos_por_docente_sec1': (('alumnos_por_docente',), 'Alumnos por docente, sec. 1.ª etapa (desde 2013)'),
+    'matricula_secundaria_equivalente_tiempo_completo': (('matricula_equivalente_tc',), 'Matrícula en equivalente a tiempo completo, secundaria 1.ª+2.ª'),
+    'salario_legal_docente_inicial_pct_pib_per_capita': (('salarios_legales_docentes', 'estadisticas_referencia'), '100 × salario legal inicial (moneda nacional) / PIB per cápita'),
+    'salario_legal_docente_15_años_experiencia_pct_pib_per_capita': (('salarios_legales_docentes', 'estadisticas_referencia'), '100 × salario legal con 15 años de experiencia / PIB per cápita'),
+    'salario_real_docente_indice_base_2015': (('salarios_reales_docentes',), 'Índice de salario real medio (base 2015 = 100)'),
+    'alumnos_por_docente_secundaria_primera_etapa': (('alumnos_por_docente',), 'Alumnos por docente, secundaria 1.ª etapa (desde 2013)'),
     'docentes_por_100_alumnos': (('alumnos_por_docente',), '100 / alumnos por docente'),
-    'coste_docentes_por_alumno_pct_pib_pc': (('salarios_legales_docentes', 'estadisticas_referencia', 'alumnos_por_docente'),
-                                             'Salario legal 15 años (% PIB pc) / alumnos por docente'),
-    'salario_legal_15a_por_1000h': (('salarios_legales_docentes', 'estadisticas_referencia', 'horas_docencia_legales'),
-                                    '1000 × salario legal 15 años (% PIB pc) / horas legales de docencia'),
-    'eurostat_gasto_publico_alumno_sec1_pps': (('gasto_publico_por_alumno_eurostat',), 'Gasto público por alumno en PPS, sec. 1.ª etapa (solo UE)'),
-    'eurostat_gasto_publico_alumno_sec2_pps': (('gasto_publico_por_alumno_eurostat',), 'Gasto público por alumno en PPS, sec. 2.ª etapa (solo UE)'),
-    'pib_pc_ppp_const2021': (('pib_per_capita_ppp',), 'PIB per cápita PPP, USD constantes de 2021 (Banco Mundial; se usa para contrastar `pib_pc_usd_ppp`)'),
-    'pib_pc_usd_ppp': (('estadisticas_referencia',), 'PIB per cápita (moneda nacional) deflactado a 2020 y convertido con la PPP de 2020'),
-    'gasto_total_corriente_2_3': (('gasto_corriente_capital',), 'Gasto corriente total, sec. 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
-    'gasto_total_capital_2_3': (('gasto_corriente_capital',), 'Gasto de capital total, sec. 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
-    'gasto_total_personal_2_3': (('gasto_personal',), 'Remuneración de todo el personal, sec. 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
-    'gasto_total_docentes_2_3': (('gasto_personal',), 'Remuneración de docentes, sec. 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
-    'gasto_total_nodocentes_2_3': (('gasto_personal',), 'Remuneración de otro personal, sec. 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
-    'gasto_alumno_basicos_2_3': (('gasto_alumno_tipo',), 'USD PPP por alumno en servicios básicos de enseñanza (`CORE`), sec. 1.ª+2.ª'),
-    'gasto_alumno_auxiliares_2_3': (('gasto_alumno_tipo',), 'USD PPP por alumno en servicios auxiliares (`ASERV`: transporte, comidas, alojamiento)'),
-    'salario_legal_inicial_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal inicial (moneda nacional) deflactado a 2020 y convertido con la PPP de 2020'),
-    'salario_legal_15a_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal con 15 años de experiencia, igual conversión'),
+    'coste_docente_por_alumno_pct_pib_per_capita': (('salarios_legales_docentes', 'estadisticas_referencia', 'alumnos_por_docente'),
+                                             'Salario legal 15 años (% del PIB per cápita) / alumnos por docente'),
+    'salario_legal_docente_15_años_pct_pib_per_capita_por_1000_horas': (('salarios_legales_docentes', 'estadisticas_referencia', 'horas_docencia_legales'),
+                                    '1000 × salario legal 15 años (% del PIB per cápita) / horas legales de docencia'),
+    'pib_per_capita_banco_mundial_usd_ppp_2021': (('pib_per_capita_ppp',), 'PIB per cápita PPP, USD constantes de 2021 (Banco Mundial; se usa para contrastar `pib_per_capita_usd_ppp`)'),
+    'pib_per_capita_usd_ppp': (('estadisticas_referencia',), 'PIB per cápita (moneda nacional) deflactado a 2020 y convertido con la PPP de 2020'),
+    'gasto_total_corriente_secundaria_usd_ppp': (('gasto_corriente_capital',), 'Gasto corriente total, secundaria 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
+    'gasto_total_capital_secundaria_usd_ppp': (('gasto_corriente_capital',), 'Gasto de capital total, secundaria 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
+    'gasto_total_personal_secundaria_usd_ppp': (('gasto_personal',), 'Remuneración de todo el personal, secundaria 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
+    'gasto_total_docentes_secundaria_usd_ppp': (('gasto_personal',), 'Remuneración de docentes, secundaria 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
+    'gasto_total_personal_no_docente_secundaria_usd_ppp': (('gasto_personal',), 'Remuneración de otro personal, secundaria 1.ª+2.ª, en USD PPP constantes (no millones); 0 = NaN'),
+    'gasto_alumno_secundaria_servicios_basicos_usd_ppp': (('gasto_alumno_tipo',), 'USD PPP por alumno en servicios básicos de enseñanza (`CORE`), secundaria 1.ª+2.ª'),
+    'gasto_alumno_secundaria_servicios_auxiliares_usd_ppp': (('gasto_alumno_tipo',), 'USD PPP por alumno en servicios auxiliares (`ASERV`: transporte, comidas, alojamiento)'),
+    'salario_legal_docente_inicial_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal inicial (moneda nacional) deflactado a 2020 y convertido con la PPP de 2020'),
+    'salario_legal_docente_15_años_experiencia_usd_ppp': (('salarios_legales_docentes', 'estadisticas_referencia'), 'Salario legal con 15 años de experiencia, igual conversión'),
     # contexto educativo, fuentes externas
     'gini': (('gini_ocde', 'gini_banco_mundial'), 'Gini de la renta disponible (0-1): observación más cercana a la edición (±1 año); OCDE antes que Banco Mundial (÷100)'),
     'gini_fuente': (('gini_ocde', 'gini_banco_mundial'), 'Fuente de la observación usada para `gini`'),
@@ -526,40 +517,40 @@ ORIGEN_VARIABLES = {
     'escolarizacion_3_años_pct': (('escolarizacion_por_edad',), '% de la población de 3 años matriculada; 0 = NaN'),
     'escolarizacion_4_años_pct': (('escolarizacion_por_edad',), '% de la población de 4 años matriculada; 0 = NaN'),
     'escolarizacion_15_años_pct': (('escolarizacion_por_edad',), '% de la población de 15 años matriculada; 0 = NaN'),
-    'repeticion_pct_sec1': (('repeticion',), '% de repetidores en sec. 1.ª etapa'),
-    'docentes_50mas_pct': (('docentes_edad',), '% del profesorado de sec. 1.ª etapa con 50 o más años'),
-    'docentes_menos_30_pct': (('docentes_edad',), '% del profesorado de sec. 1.ª etapa con menos de 30 años'),
-    'tamaño_clase_sec1': (('tamaño_de_clase',), 'Alumnos por clase en sec. 1.ª etapa (desde 2013)'),
-    'horas_docencia_sec1': (('horas_docencia_legales',), 'Horas anuales legales de docencia, sec. 1.ª etapa (no hay 2022)'),
+    'repeticion_pct_secundaria_primera_etapa': (('repeticion',), '% de repetidores en secundaria 1.ª etapa'),
+    'docentes_50_o_mas_años_pct': (('docentes_edad',), '% del profesorado de secundaria 1.ª etapa con 50 o más años'),
+    'docentes_menos_de_30_años_pct': (('docentes_edad',), '% del profesorado de secundaria 1.ª etapa con menos de 30 años'),
+    'tamaño_clase_secundaria_primera_etapa': (('tamaño_de_clase',), 'Alumnos por clase en secundaria 1.ª etapa (desde 2013)'),
+    'horas_docencia_anuales_secundaria_primera_etapa': (('horas_docencia_legales',), 'Horas anuales legales de docencia, secundaria 1.ª etapa (no hay 2022)'),
     # PISA (tablas maestras; media del país ponderada: W_FSTUWT en alumnos, W_SCHGRNRABWT en centros)
-    'pisa_math': (('PISA',), 'Media de `PV*MATH` por alumno, ponderada con `W_FSTUWT`'),
-    'pisa_read': (('PISA',), 'Media de `PV*READ` por alumno, ponderada con `W_FSTUWT`'),
-    'pisa_scie': (('PISA',), 'Media de `PV*SCIE` por alumno, ponderada con `W_FSTUWT`'),
-    'pisa_n_alumnos': (('PISA',), 'Nº de alumnos de la muestra'),
-    'pisa_n_centros': (('PISA',), 'Nº de centros de la muestra'),
+    'pisa_matematicas': (('PISA',), 'Media de `PV*MATH` por alumno, ponderada con `W_FSTUWT`'),
+    'pisa_lectura': (('PISA',), 'Media de `PV*READ` por alumno, ponderada con `W_FSTUWT`'),
+    'pisa_ciencias': (('PISA',), 'Media de `PV*SCIE` por alumno, ponderada con `W_FSTUWT`'),
+    'pisa_numero_alumnos': (('PISA',), 'Nº de alumnos de la muestra'),
+    'pisa_numero_centros': (('PISA',), 'Nº de centros de la muestra'),
     'pisa_escs_trend_media': (('PISA',), 'Media de `ESCS_TREND`'),
-    'pisa_escs_trend_sd': (('PISA',), 'Desviación típica de `ESCS_TREND`'),
-    'pisa_segregacion_escs_pct': (('PISA',), '% de la varianza de `ESCS_TREND` entre centros'),
-    'pisa_min_mates': (('PISA',), '`MMINS` (solo 2012-2018; 0 = NaN)'),
-    'pisa_min_lengua': (('PISA',), '`LMINS` (solo 2012-2018; 0 = NaN)'),
-    'pisa_min_ciencias': (('PISA',), '`SMINS` (solo 2012-2018; 0 = NaN)'),
-    'pisa_stratio': (('PISA',), '`STRATIO`, media de centros'),
-    'pisa_clsize': (('PISA',), '`CLSIZE`, media de centros'),
-    'pisa_schsize': (('PISA',), '`SCHSIZE`, media de centros'),
-    'pisa_pct_centros_publicos': (('PISA',), '% de centros con `SCHLTYPE` = 3'),
-    'pisa_fin_gobierno_pct': (('PISA',), '`SC02Q01` (2012) / `SC016Q01TA`, media de centros'),
-    'pisa_fin_cuotas_pct': (('PISA',), '`SC02Q02` (2012) / `SC016Q02TA`, media de centros'),
-    'pisa_fin_donaciones_pct': (('PISA',), '`SC02Q03` (2012) / `SC016Q03TA`, media de centros'),
-    'pisa_fin_otras_pct': (('PISA',), '`SC02Q04` (2012) / `SC016Q04TA`, media de centros'),
+    'pisa_escs_trend_desviacion_tipica': (('PISA',), 'Desviación típica de `ESCS_TREND`'),
+    'pisa_segregacion_social_entre_centros_pct': (('PISA',), '% de la varianza de `ESCS_TREND` entre centros'),
+    'pisa_minutos_semanales_matematicas': (('PISA',), '`MMINS` (solo 2012-2018; 0 = NaN)'),
+    'pisa_minutos_semanales_lengua': (('PISA',), '`LMINS` (solo 2012-2018; 0 = NaN)'),
+    'pisa_minutos_semanales_ciencias': (('PISA',), '`SMINS` (solo 2012-2018; 0 = NaN)'),
+    'pisa_alumnos_por_profesor': (('PISA',), '`STRATIO`, media de centros'),
+    'pisa_tamaño_clase': (('PISA',), '`CLSIZE`, media de centros'),
+    'pisa_tamaño_centro': (('PISA',), '`SCHSIZE`, media de centros'),
+    'pisa_centros_publicos_pct': (('PISA',), '% de centros con `SCHLTYPE` = 3'),
+    'pisa_financiacion_centro_gobierno_pct': (('PISA',), '`SC02Q01` (2012) / `SC016Q01TA`, media de centros'),
+    'pisa_financiacion_centro_cuotas_pct': (('PISA',), '`SC02Q02` (2012) / `SC016Q02TA`, media de centros'),
+    'pisa_financiacion_centro_donaciones_pct': (('PISA',), '`SC02Q03` (2012) / `SC016Q03TA`, media de centros'),
+    'pisa_financiacion_centro_otras_pct': (('PISA',), '`SC02Q04` (2012) / `SC016Q04TA`, media de centros'),
     'pisa_profesores_certificados_pct': (('PISA',), '100 × `PROPCERT` / `PROATCE`, media de centros'),
     'pisa_profesores_master_pct': (('PISA',), '100 × `PROPAT7` (solo 2022)'),
     'pisa_ordenadores_por_alumno': (('PISA',), '`RATCMP1` / `RATCMP15`, media de centros'),
     'pisa_autonomia_recursos': (('PISA',), '`RESPRES` (2012, 2015) / `SRESPRES` (2022); no en 2018; no comparable'),
-    'pisa_edushort': (('PISA',), '`EDUSHORT`, media de centros (desde 2015)'),
-    'pisa_staffshort': (('PISA',), '`STAFFSHORT`, media de centros (desde 2015)'),
+    'pisa_escasez_material_educativo': (('PISA',), '`EDUSHORT`, media de centros (desde 2015)'),
+    'pisa_escasez_personal': (('PISA',), '`STAFFSHORT`, media de centros (desde 2015)'),
     **{f'pisa_brecha_{n}': (('PISA',), f'Media del cuartil de centros más desfavorecido menos la del más favorecido ({v})')
-       for n, v in (('stratio', '`STRATIO`'), ('clsize', '`CLSIZE`'), ('certificados', 'profesorado certificado'),
-                    ('edushort', '`EDUSHORT`'), ('staffshort', '`STAFFSHORT`'))},
+       for n, v in (('alumnos_por_profesor', '`STRATIO`'), ('tamaño_clase', '`CLSIZE`'), ('profesorado_certificado', 'profesorado certificado'),
+                    ('escasez_material', '`EDUSHORT`'), ('escasez_personal', '`STAFFSHORT`'))},
 }
 
 
@@ -576,15 +567,15 @@ def inventario_variables(tablas: dict[str, pd.DataFrame]) -> pd.DataFrame:
     `data/raw/externos`), cálculo y cobertura (% de filas y nº de países con dato).
     `tablas`: {nombre: DataFrame} con `pais` y `edicion`."""
     filas, vistas = [], set()
-    for nombre, t in tablas.items():
-        for v in t.columns:
-            if v in CLAVE or v in vistas:
+    for nombre, tabla in tablas.items():
+        for variable in tabla.columns:
+            if variable in CLAVE or variable in vistas:
                 continue
-            vistas.add(v)
-            series, calculo = ORIGEN_VARIABLES[v]
-            donde = [n for n, o in tablas.items() if v in o]
-            filas.append({'variable': v, 'tabla': ' + '.join(donde), 'proveedor': _proveedor(series),
+            vistas.add(variable)
+            series, calculo = ORIGEN_VARIABLES[variable]
+            donde = [nombre_tabla for nombre_tabla, otra_tabla in tablas.items() if variable in otra_tabla]
+            filas.append({'variable': variable, 'tabla': ' + '.join(donde), 'proveedor': _proveedor(series),
                           'series (CSV)': ', '.join(series), 'cálculo': calculo,
-                          '% filas con dato': round(100 * t[v].notna().mean()),
-                          'países con dato': t.loc[t[v].notna(), 'pais'].nunique()})
+                          '% filas con dato': round(100 * tabla[variable].notna().mean()),
+                          'países con dato': tabla.loc[tabla[variable].notna(), 'pais'].nunique()})
     return pd.DataFrame(filas)

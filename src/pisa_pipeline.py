@@ -7,7 +7,7 @@ Procesamiento de microdatos PISA 2012+ (dominios MATH, READ, SCIE).
 Flujo (ver `notebooks/fase_1_data_ingestion_eda/00_pipeline_multiedicion_PISA.ipynb`):
 
     1. `procesar_edicion`: lee estudiantes y centros de una edición, filtra países y
-       guarda 2 parquets sin imputar y con todas las columnas en `datos_anuales/`,
+       guarda 2 parquets sin imputar y con todas las columnas en `data/raw/datos_anuales/`,
        más las columnas `*_TREND` de `escs_trend.csv`.
     2. `leer_vista_estudiantes` / `leer_vista_colegios`: leen del parquet solo las
        columnas curadas, para EDA.
@@ -135,7 +135,7 @@ def columnas_pv(dominio: str, n_pv: int = 10) -> list[str]:
     por los que existan, así que `n_pv=10` vale también para 2012 (5 PV)."""
     if dominio not in DOMINIOS:
         raise ValueError(f"Dominio '{dominio}' no reconocido. Usa uno de {DOMINIOS}")
-    return [f'PV{i}{dominio}' for i in range(1, n_pv + 1)]
+    return [f'PV{numero_pv}{dominio}' for numero_pv in range(1, n_pv + 1)]
 
 
 # pyreadstat tiene una función por formato con la misma firma
@@ -159,12 +159,12 @@ def lector_para(ruta_archivo: str):
 def encontrar_archivo(ruta_carpeta: str, patron: str, extensiones: tuple[str, ...] | None = None) -> str:
     """Único archivo de `ruta_carpeta` cuyo nombre contiene `patron` (sin distinguir
     mayúsculas) y tiene una extensión soportada. Falla si no hay ninguno o hay varios."""
-    extensiones = tuple(e.lower() for e in (extensiones or LECTORES_PYREADSTAT.keys()))
-    patron_low = patron.lower()
+    extensiones = tuple(extension.lower() for extension in (extensiones or LECTORES_PYREADSTAT.keys()))
+    patron_minusculas = patron.lower()
 
     candidatos = [
-        f for f in os.listdir(ruta_carpeta)
-        if patron_low in f.lower() and f.lower().endswith(extensiones)
+        nombre_fichero for nombre_fichero in os.listdir(ruta_carpeta)
+        if patron_minusculas in nombre_fichero.lower() and nombre_fichero.lower().endswith(extensiones)
     ]
 
     if not candidatos:
@@ -192,8 +192,8 @@ def columnas_disponibles(
     alias = alias or {}
     _, meta = lector_para(ruta_archivo)(ruta_archivo, metadataonly=True)
     columnas_reales = set(meta.column_names)
-    presentes = [c for c in columnas if alias.get(c, c) in columnas_reales]
-    ausentes = [c for c in columnas if alias.get(c, c) not in columnas_reales]
+    presentes = [columna for columna in columnas if alias.get(columna, columna) in columnas_reales]
+    ausentes = [columna for columna in columnas if alias.get(columna, columna) not in columnas_reales]
     return presentes, ausentes
 
 
@@ -205,8 +205,8 @@ def _traducir_columnas(
     alias = alias or {}
     if columnas is None:
         return None, {v: k for k, v in alias.items() if v != k}
-    a_leer = [alias.get(c, c) for c in columnas]
-    renombrar = {alias[c]: c for c in columnas if c in alias and alias[c] != c}
+    a_leer = [alias.get(columna, columna) for columna in columnas]
+    renombrar = {alias[columna]: columna for columna in columnas if columna in alias and alias[columna] != columna}
     return a_leer, renombrar
 
 
@@ -376,14 +376,14 @@ def unir_alumnos_colegios(
 
 # 3. Nulos
 
-def porcentaje_nulos(df: pd.DataFrame) -> pd.Series:
+def porcentaje_nulos(datos: pd.DataFrame) -> pd.Series:
     """% de nulos por columna, de mayor a menor."""
-    return (df.isnull().sum() / len(df) * 100).sort_values(ascending=False)
+    return (datos.isnull().sum() / len(datos) * 100).sort_values(ascending=False)
 
 
-def porcentaje_nulos_por_pais(df: pd.DataFrame, columna: str, pais_col: str = 'CNT') -> pd.DataFrame:
+def porcentaje_nulos_por_pais(datos: pd.DataFrame, columna: str, pais_col: str = 'CNT') -> pd.DataFrame:
     """% de nulos de `columna` en cada país, de mayor a menor."""
-    resultado = df[columna].isna().groupby(df[pais_col]).mean() * 100
+    resultado = datos[columna].isna().groupby(datos[pais_col]).mean() * 100
     return (
         resultado.reset_index(name=f'pct_nulos_{columna}')
         .sort_values(f'pct_nulos_{columna}', ascending=False)
@@ -393,15 +393,15 @@ def porcentaje_nulos_por_pais(df: pd.DataFrame, columna: str, pais_col: str = 'C
 # 4. Agregación por país
 
 def agregar_por_pais(
-    df: pd.DataFrame,
+    datos: pd.DataFrame,
     indices: list[str],
     peso_col: str = 'W_FSTUWT',
     pais_col: str = 'CNT',
 ) -> pd.DataFrame:
     """Media ponderada por país de cada columna de `indices`."""
-    return df.groupby(pais_col).apply(
-        lambda x: pd.Series({
-            indice: np.average(x[indice], weights=x[peso_col])
+    return datos.groupby(pais_col).apply(
+        lambda datos_pais: pd.Series({
+            indice: np.average(datos_pais[indice], weights=datos_pais[peso_col])
             for indice in indices
         }),
         include_groups=False,
@@ -409,41 +409,41 @@ def agregar_por_pais(
 
 
 def agregar_pv_por_pais(
-    df: pd.DataFrame,
+    datos: pd.DataFrame,
     dominio: str,
     peso_col: str = 'W_FSTUWT',
     pais_col: str = 'CNT',
 ) -> pd.Series:
     """Media por país de los PV de un dominio: promedia los PV de cada alumno y
-    pondera por `peso_col`. Serie vacía si `df` no tiene PV de ese dominio."""
-    cols_pv = [c for c in columnas_pv(dominio) if c in df.columns]
-    if not cols_pv:
+    pondera por `peso_col`. Serie vacía si `datos` no tiene PV de ese dominio."""
+    columnas_pv_dominio = [columna for columna in columnas_pv(dominio) if columna in datos.columns]
+    if not columnas_pv_dominio:
         return pd.Series(dtype=float, name=dominio)
 
-    df_temp = pd.DataFrame({
-        'media_pv': df[cols_pv].mean(axis=1),
-        peso_col: df[peso_col],
-        pais_col: df[pais_col],
+    datos_temporales = pd.DataFrame({
+        'media_pv': datos[columnas_pv_dominio].mean(axis=1),
+        peso_col: datos[peso_col],
+        pais_col: datos[pais_col],
     })
 
-    return df_temp.groupby(pais_col).apply(
-        lambda x: np.average(x['media_pv'], weights=x[peso_col]),
+    return datos_temporales.groupby(pais_col).apply(
+        lambda datos_pais: np.average(datos_pais['media_pv'], weights=datos_pais[peso_col]),
         include_groups=False,
     )
 
 
 # 5. Orquestación por edición
 
-def _normalizar_ids(df: pd.DataFrame) -> pd.DataFrame:
+def _normalizar_ids(datos: pd.DataFrame) -> pd.DataFrame:
     """Ids de centro y alumno a dtype 'string' (vienen como número o como texto con
     ceros, que se conservan). Los numéricos pasan por Int64 para no quedar como
     '724.0'; no usar `astype(str)`: convertiría los nulos en el texto 'None'."""
-    for id_col in ('CNTSCHID', 'CNTSTUID'):
-        if id_col in df.columns:
-            if pd.api.types.is_numeric_dtype(df[id_col]):
-                df[id_col] = df[id_col].astype('Int64')
-            df[id_col] = df[id_col].astype('string')
-    return df
+    for columna_id in ('CNTSCHID', 'CNTSTUID'):
+        if columna_id in datos.columns:
+            if pd.api.types.is_numeric_dtype(datos[columna_id]):
+                datos[columna_id] = datos[columna_id].astype('Int64')
+            datos[columna_id] = datos[columna_id].astype('string')
+    return datos
 
 
 # Columnas añadidas por el pipeline (las *_adj y factor_inflacion solo con submuestreo)
@@ -452,27 +452,27 @@ _COLUMNAS_DERIVADAS_COLEGIO = ['factor_inflacion', 'EDICION']
 
 
 def _columnas_vista_estudiantes(nombres) -> list[str]:
-    pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in nombres]
-    base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + pv + COLUMNAS_CONTEXTO_ESTUDIANTE
-    return [c for c in dict.fromkeys(base) if c in nombres]
+    columnas_valores_plausibles = [columna for columna in sum((columnas_pv(dominio) for dominio in DOMINIOS), []) if columna in nombres]
+    base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + columnas_valores_plausibles + COLUMNAS_CONTEXTO_ESTUDIANTE
+    return [columna for columna in dict.fromkeys(base) if columna in nombres]
 
 
 def _columnas_vista_colegios(nombres) -> list[str]:
     base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
-            + [f'{c}_adj' for c in COLUMNAS_PESO_COLEGIO]
+            + [f'{columna}_adj' for columna in COLUMNAS_PESO_COLEGIO]
             + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
-    return [c for c in dict.fromkeys(base) if c in nombres]
+    return [columna for columna in dict.fromkeys(base) if columna in nombres]
 
 
-def vista_estudiantes(df: pd.DataFrame) -> pd.DataFrame:
-    """Copia de `df` con solo ids, pesos, PV y `COLUMNAS_CONTEXTO_ESTUDIANTE`. Los
+def vista_estudiantes(datos: pd.DataFrame) -> pd.DataFrame:
+    """Copia de `datos` con solo ids, pesos, PV y `COLUMNAS_CONTEXTO_ESTUDIANTE`. Los
     parquets guardan todas las columnas; esto acota lo que usa el EDA."""
-    return df[_columnas_vista_estudiantes(set(df.columns))].copy()
+    return datos[_columnas_vista_estudiantes(set(datos.columns))].copy()
 
 
-def vista_colegios(df: pd.DataFrame) -> pd.DataFrame:
+def vista_colegios(datos: pd.DataFrame) -> pd.DataFrame:
     """Como `vista_estudiantes`, para la tabla de centros."""
-    return df[_columnas_vista_colegios(set(df.columns))].copy()
+    return datos[_columnas_vista_colegios(set(datos.columns))].copy()
 
 
 def leer_vista_estudiantes(ruta_parquet: str) -> pd.DataFrame:
@@ -487,49 +487,49 @@ def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
     return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
 
 
-def añadir_indices_trend(df: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
+def añadir_indices_trend(datos: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
     """Añade `ESCS_TREND`, `HISEI_TREND`, `HOMEPOS_TREND` y `PAREDINT_TREND` desde
     `escs_trend.csv` de la OCDE, uniendo por país, centro y alumno. Los índices
     originales no se tocan. 2022 no está en el csv (su escala es la de referencia):
     sus columnas `_TREND` son copia de las originales. Falla si casa <99,9%."""
     if año not in CICLO_ESCS_TREND:
-        return df.assign(**{f'{c}_TREND': df[c] for c in INDICES_TREND if c in df.columns})
+        return datos.assign(**{f'{indice}_TREND': datos[indice] for indice in INDICES_TREND if indice in datos.columns})
 
     modulo = _MODULO_IDS_ESCS_TREND[año]
 
     def clave(serie):
-        x = pd.to_numeric(serie, errors='coerce').astype('Int64')
-        return x % modulo if modulo else x
+        valores = pd.to_numeric(serie, errors='coerce').astype('Int64')
+        return valores % modulo if modulo else valores
 
-    t = pd.read_csv(
+    escs_trend_ocde = pd.read_csv(
         ruta_csv, usecols=['cycle', 'cnt', 'schoolid', 'studentid', *INDICES_TREND.values()],
         dtype={'schoolid': str, 'studentid': str},
     )
-    t = t[t['cycle'] == CICLO_ESCS_TREND[año]]
-    t = t.assign(
-        CNT=t['cnt'], _s=clave(t['schoolid']), _st=clave(t['studentid'])
+    escs_trend_ocde = escs_trend_ocde[escs_trend_ocde['cycle'] == CICLO_ESCS_TREND[año]]
+    escs_trend_ocde = escs_trend_ocde.assign(
+        CNT=escs_trend_ocde['cnt'], _id_centro=clave(escs_trend_ocde['schoolid']), _id_alumno=clave(escs_trend_ocde['studentid'])
     ).drop(columns=['cycle', 'cnt', 'schoolid', 'studentid'])
 
-    k = pd.DataFrame({'CNT': df['CNT'], '_s': clave(df['CNTSCHID']), '_st': clave(df['CNTSTUID'])})
-    m = k.merge(t, how='left', on=['CNT', '_s', '_st'], validate='many_to_one', indicator=True)
-    assert len(m) == len(df), 'El merge con escs_trend ha cambiado el número de filas'
-    casan = (m['_merge'] == 'both').mean()
+    claves_alumnos = pd.DataFrame({'CNT': datos['CNT'], '_id_centro': clave(datos['CNTSCHID']), '_id_alumno': clave(datos['CNTSTUID'])})
+    union = claves_alumnos.merge(escs_trend_ocde, how='left', on=['CNT', '_id_centro', '_id_alumno'], validate='many_to_one', indicator=True)
+    assert len(union) == len(datos), 'El merge con escs_trend ha cambiado el número de filas'
+    casan = (union['_merge'] == 'both').mean()
     if casan < 0.999:
         raise ValueError(f'PISA {año}: solo casa el {casan:.2%} de los alumnos con escs_trend.csv')
     print(f'  escs_trend: casa el {casan:.2%} de los alumnos')
-    return df.assign(**{f'{c}_TREND': m[v].to_numpy() for c, v in INDICES_TREND.items()})
+    return datos.assign(**{f'{indice}_TREND': union[columna_ocde].to_numpy() for indice, columna_ocde in INDICES_TREND.items()})
 
 
-def _objetos_a_string(df: pd.DataFrame) -> pd.DataFrame:
+def _objetos_a_string(datos: pd.DataFrame) -> pd.DataFrame:
     """Columnas object a dtype 'string' (pyarrow falla con tipos mezclados)."""
-    for col in df.select_dtypes(include='object').columns:
-        df[col] = df[col].map(lambda x: x if pd.isna(x) else str(x)).astype('string')
-    return df
+    for columna in datos.select_dtypes(include='object').columns:
+        datos[columna] = datos[columna].map(lambda valor: valor if pd.isna(valor) else str(valor)).astype('string')
+    return datos
 
 
-def rutas_datos_anuales(ruta_intermedios: str, año: int) -> tuple[str, str]:
-    """Rutas (estudiantes, colegios) de los parquets de una edición en `datos_anuales/`."""
-    carpeta = os.path.join(ruta_intermedios, CARPETA_DATOS_ANUALES)
+def rutas_datos_anuales(ruta_raw_base: str, año: int) -> tuple[str, str]:
+    """Rutas (estudiantes, colegios) de los parquets de una edición en `datos_anuales/`, dentro de `ruta_raw_base` (`data/raw`)."""
+    carpeta = os.path.join(ruta_raw_base, CARPETA_DATOS_ANUALES)
     return (
         os.path.join(carpeta, f'pisa{año}_estudiantes.parquet'),
         os.path.join(carpeta, f'pisa{año}_colegios.parquet'),
@@ -539,7 +539,7 @@ def rutas_datos_anuales(ruta_intermedios: str, año: int) -> tuple[str, str]:
 def procesar_edicion(
     año: int,
     ruta_raw: str,
-    ruta_intermedios: str,
+    ruta_raw_base: str,
     fraccion: float | None = None,
     seed: int = 42,
     chunk_size: int = 10000,
@@ -551,7 +551,8 @@ def procesar_edicion(
     ruta_escs_trend: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Procesa una edición y devuelve `(df_estudiantes, df_colegios)`, sin imputar.
-    Los guarda en `datos_anuales/` (`pisa<año>_estudiantes/colegios.parquet`).
+    Los guarda en `datos_anuales/`, dentro de `ruta_raw_base` (`data/raw`), como `pisa<año>_estudiantes/colegios.parquet`.
+    `ruta_raw` es la carpeta de los ficheros originales de esa edición.
 
     * `paises`: países a conservar (None = todos).
     * `fraccion=None`: muestra completa con pesos originales (`SENWT` se calcula en
@@ -567,7 +568,7 @@ def procesar_edicion(
     if año not in EDICIONES_PISA:
         raise ValueError(f"Edición {año} no configurada en EDICIONES_PISA")
 
-    ruta_est, ruta_col = rutas_datos_anuales(ruta_intermedios, año)
+    ruta_est, ruta_col = rutas_datos_anuales(ruta_raw_base, año)
     if usar_checkpoint_si_existe and os.path.exists(ruta_est) and os.path.exists(ruta_col):
         print(f'  Parquets anuales ya existen, se cargan sin reprocesar el origen: {os.path.dirname(ruta_est)}')
         df_estudiantes = _normalizar_ids(pd.read_parquet(ruta_est))
@@ -577,12 +578,12 @@ def procesar_edicion(
             df_colegios = df_colegios[df_colegios['CNT'].isin(paises)].reset_index(drop=True)
         return df_estudiantes, df_colegios
 
-    cfg = EDICIONES_PISA[año]
-    alias_est = cfg.get('alias_estudiantes')
-    alias_col = cfg.get('alias_colegios')
+    configuracion_edicion = EDICIONES_PISA[año]
+    alias_est = configuracion_edicion.get('alias_estudiantes')
+    alias_col = configuracion_edicion.get('alias_colegios')
 
-    ruta_estudiantes = encontrar_archivo(ruta_raw, cfg['patron_estudiantes'])
-    ruta_colegios = encontrar_archivo(ruta_raw, cfg['patron_colegios'])
+    ruta_estudiantes = encontrar_archivo(ruta_raw, configuracion_edicion['patron_estudiantes'])
+    ruta_colegios = encontrar_archivo(ruta_raw, configuracion_edicion['patron_colegios'])
 
     # 1. Países y (opcional) submuestreo de escuelas
     submuestrear = fraccion is not None and fraccion < 1
@@ -597,18 +598,18 @@ def procesar_edicion(
         escuelas_sel, factores = None, None
 
     # 2. Estudiantes (se comprueban antes las columnas contra los metadatos del fichero)
-    n_pv = cfg.get('n_pv', 10)
-    columnas_pv_totales = sum((columnas_pv(d, n_pv) for d in DOMINIOS), [])
+    n_pv = configuracion_edicion.get('n_pv', 10)
+    columnas_pv_totales = sum((columnas_pv(dominio, n_pv) for dominio in DOMINIOS), [])
     imprescindibles_est = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + columnas_pv_totales
     _, ausentes_est = columnas_disponibles(
         ruta_estudiantes,
         list(dict.fromkeys(
             imprescindibles_est
-            + [c for c in COLUMNAS_CONTEXTO_ESTUDIANTE if c not in COLUMNAS_TREND]
+            + [columna for columna in COLUMNAS_CONTEXTO_ESTUDIANTE if columna not in COLUMNAS_TREND]
         )),
         alias_est,
     )
-    basicas_ausentes = [c for c in COLUMNAS_BASICAS if c in ausentes_est]
+    basicas_ausentes = [columna for columna in COLUMNAS_BASICAS if columna in ausentes_est]
     if basicas_ausentes:
         raise ValueError(
             f"PISA {año}: faltan columnas básicas imprescindibles en {ruta_estudiantes}: "
@@ -622,7 +623,7 @@ def procesar_edicion(
         columnas_a_leer_est = None  # todas
     else:
         deseadas = list(dict.fromkeys(imprescindibles_est + columnas_estudiante))
-        columnas_a_leer_est = [c for c in deseadas if c not in ausentes_est]
+        columnas_a_leer_est = [columna for columna in deseadas if columna not in ausentes_est]
 
     df_estudiantes = leer_estudiantes_submuestra(
         ruta_estudiantes, columnas_a_leer_est, escuelas_sel, factores, chunk_size, alias_est, paises
@@ -636,7 +637,7 @@ def procesar_edicion(
     if ruta_escs_trend:
         df_estudiantes = añadir_indices_trend(df_estudiantes, año, ruta_escs_trend)
     # assign evita la fragmentación del DataFrame (PerformanceWarning con cientos de columnas)
-    df_estudiantes = df_estudiantes.assign(EDICION=año, DOMINIO_PRINCIPAL=cfg['dominio_principal'])
+    df_estudiantes = df_estudiantes.assign(EDICION=año, DOMINIO_PRINCIPAL=configuracion_edicion['dominio_principal'])
 
     # 3. Colegios
     claves_col = ['CNT', 'STRATUM', 'CNTSCHID']
@@ -645,7 +646,7 @@ def procesar_edicion(
         list(dict.fromkeys(claves_col + COLUMNAS_PESO_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)),
         alias_col,
     )
-    claves_ausentes = [c for c in claves_col if c in ausentes_col]
+    claves_ausentes = [columna for columna in claves_col if columna in ausentes_col]
     if claves_ausentes:
         raise ValueError(
             f"PISA {año}: faltan columnas clave imprescindibles en {ruta_colegios}: {claves_ausentes}"
@@ -658,7 +659,7 @@ def procesar_edicion(
         columnas_a_leer_col = None  # todas
     else:
         deseadas = list(dict.fromkeys(claves_col + COLUMNAS_PESO_COLEGIO + columnas_colegio))
-        columnas_a_leer_col = [c for c in deseadas if c not in ausentes_col]
+        columnas_a_leer_col = [columna for columna in deseadas if columna not in ausentes_col]
     df_colegios = leer_colegios(ruta_colegios, columnas_a_leer_col, alias_col)
     if df_colegios.columns.duplicated().any():
         raise ValueError(f'Columnas duplicadas tras aplicar los alias en centros: '
@@ -708,7 +709,7 @@ def validar_tablas(
     Claves: alumno = (CNT, CNTSTUID) (en 2012 el id solo es único dentro del país);
     centro = (CNT, CNTSCHID).
     """
-    pv = [c for c in sum((columnas_pv(d) for d in DOMINIOS), []) if c in df_est.columns]
+    columnas_valores_plausibles = [columna for columna in sum((columnas_pv(dominio) for dominio in DOMINIOS), []) if columna in df_est.columns]
     idx_est = pd.MultiIndex.from_frame(df_est[['CNT', 'CNTSCHID']])
     idx_col = pd.MultiIndex.from_frame(df_col[['CNT', 'CNTSCHID']])
     desvio_senwt = (df_est.groupby('CNT')['SENWT'].sum() - 5000).abs().max()
@@ -724,7 +725,7 @@ def validar_tablas(
         'centros sin alumnos': int((~idx_col.isin(idx_est.unique())).sum()),
         'pesos de alumno nulos o <= 0': int((df_est['W_FSTUWT'].isna() | (df_est['W_FSTUWT'] <= 0)).sum()),
         'pesos de centro nulos o <= 0': int((df_col['W_SCHGRNRABWT'].isna() | (df_col['W_SCHGRNRABWT'] <= 0)).sum()),
-        'valores plausibles nulos': int(df_est[pv].isna().sum().sum()),
+        'valores plausibles nulos': int(df_est[columnas_valores_plausibles].isna().sum().sum()),
         'desvío máximo de SENWT respecto a 5000 por país': float(desvio_senwt),
     }
     resumen = pd.DataFrame({'valor': comprobaciones})
@@ -745,22 +746,22 @@ def generar_diccionario_columnas(
     `ruta_salida`, lo guarda como CSV."""
     filas = []
     for año in ediciones:
-        cfg = EDICIONES_PISA[año]
+        configuracion_edicion = EDICIONES_PISA[año]
         carpeta = os.path.join(ruta_raw_base, str(año))
         for tabla in ('estudiantes', 'colegios'):
-            alias = cfg.get(f'alias_{tabla}') or {}
+            alias = configuracion_edicion.get(f'alias_{tabla}') or {}
             inverso = {v: k for k, v in alias.items()}
-            ruta = encontrar_archivo(carpeta, cfg[f'patron_{tabla}'])
+            ruta = encontrar_archivo(carpeta, configuracion_edicion[f'patron_{tabla}'])
             _, meta = lector_para(ruta)(ruta, metadataonly=True)
             for nombre, etiqueta in zip(meta.column_names, meta.column_labels):
                 filas.append((año, tabla, inverso.get(nombre, nombre), nombre, etiqueta or ''))
             filas.append((año, tabla, 'EDICION', '', 'Añadida por el pipeline: año de la edición'))
         filas.append((año, 'estudiantes', 'DOMINIO_PRINCIPAL', '', 'Añadida por el pipeline: dominio focal del ciclo'))
-        for c in INDICES_TREND:
+        for indice in INDICES_TREND:
             origen = 'copia del original (2022 es la escala de referencia)' if año not in CICLO_ESCS_TREND \
                 else 'reescalado por la OCDE (escs_trend.csv), comparable con 2022'
-            filas.append((año, 'estudiantes', f'{c}_TREND', '', f'Añadida por el pipeline: {c} {origen}'))
-        if not any(f[0] == año and f[1] == 'estudiantes' and f[2] == 'SENWT' for f in filas):
+            filas.append((año, 'estudiantes', f'{indice}_TREND', '', f'Añadida por el pipeline: {indice} {origen}'))
+        if not any(fila[0] == año and fila[1] == 'estudiantes' and fila[2] == 'SENWT' for fila in filas):
             filas.append((año, 'estudiantes', 'SENWT', '',
                           'Añadida por el pipeline: peso senado (W_FSTUWT reescalado, cada país suma 5000)'))
     diccionario = pd.DataFrame(

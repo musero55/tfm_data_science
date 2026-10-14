@@ -124,9 +124,9 @@ GINI_BANCO_MUNDIAL = 'SI.POV.GINI'        # Gini (0-100) de encuestas de hogares
 
 
 def _get(url: str, timeout: int = 300) -> bytes:
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    peticion = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(peticion, timeout=timeout) as respuesta:
+        return respuesta.read()
 
 
 def _n_dimensiones(dataflow: str, agencia: str = AGENCIA_EDU) -> int:
@@ -134,15 +134,15 @@ def _n_dimensiones(dataflow: str, agencia: str = AGENCIA_EDU) -> int:
     import xml.etree.ElementTree as ET
     dsd = dataflow.split('@')[0]
     xml = _get(f'https://sdmx.oecd.org/public/rest/datastructure/{agencia}/{dsd}/latest', timeout=60)
-    ns = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
-    return len(next(ET.fromstring(xml).iter(ns + 'DimensionList')).findall(ns + 'Dimension'))
+    espacio_nombres_sdmx = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
+    return len(next(ET.fromstring(xml).iter(espacio_nombres_sdmx + 'DimensionList')).findall(espacio_nombres_sdmx + 'Dimension'))
 
 
 def url_oecd(serie: dict, paises: list[str], inicio: int = 2000) -> str:
     """URL de consulta CSV de una serie de `SERIES_OCDE` para los países indicados."""
     agencia = serie.get('agencia', AGENCIA_EDU)
     dims = serie['dims'] if serie['dims'] is not None else [None] * (_n_dimensiones(serie['dataflow'], agencia) - 1)
-    clave = '.'.join(['+'.join(paises)] + [d or '' for d in dims])
+    clave = '.'.join(['+'.join(paises)] + [dimension or '' for dimension in dims])
     return (f"{URL_OCDE}/{agencia},{serie['dataflow']},{serie['version']}/{clave}"
             f"?startPeriod={inicio}&format=csvfilewithlabels")
 
@@ -152,8 +152,8 @@ def descargar_oecd(nombre: str, ruta_carpeta: str, paises: list[str] | None = No
     paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
     ruta = os.path.join(ruta_carpeta, f'{nombre}.csv')
     datos = _get(url_oecd(SERIES_OCDE[nombre], paises, inicio))   # antes de abrir el fichero: si falla, no deja uno vacío
-    with open(ruta, 'wb') as f:
-        f.write(datos)
+    with open(ruta, 'wb') as fichero:
+        fichero.write(datos)
     return ruta
 
 
@@ -164,11 +164,11 @@ def descargar_banco_mundial(indicador: str, nombre: str, ruta_carpeta: str, pais
     url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
            f"?format=json&date={inicio}:{fin}&per_page=20000")
     _, filas = json.loads(_get(url))
-    df = pd.DataFrame(
-        [{'pais': f['countryiso3code'], 'año': int(f['date']), 'valor': f['value']} for f in filas]
+    datos = pd.DataFrame(
+        [{'pais': observacion['countryiso3code'], 'año': int(observacion['date']), 'valor': observacion['value']} for observacion in filas]
     ).sort_values(['pais', 'año'])
     ruta = os.path.join(ruta_carpeta, f'{nombre}.csv')
-    df.to_csv(ruta, index=False)
+    datos.to_csv(ruta, index=False)
     return ruta
 
 
@@ -177,30 +177,66 @@ def descargar_pib(ruta_carpeta: str, paises: list[str] | None = None, inicio: in
     return descargar_banco_mundial(PIB_BANCO_MUNDIAL, 'pib_per_capita_ppp', ruta_carpeta, paises, inicio, fin)
 
 
+# Indicadores macroeconómicos del Banco Mundial (WDI): código -> (nombre de columna, qué mide, tema)
+INDICADORES_BANCO_MUNDIAL = {
+    'NY.GDP.MKTP.KD.ZG': ('crecimiento_pib_pct_anual', 'Crecimiento anual del PIB (%)', 'Ciclo económico'),
+    'FP.CPI.TOTL.ZG': ('inflacion_precios_consumo_pct_anual', 'Inflación: variación anual de los precios al consumo (%)', 'Ciclo económico'),
+    'SL.UEM.TOTL.ZS': ('desempleo_total_pct_poblacion_activa', 'Desempleo total (% de la población activa; estimación de la OIT)', 'Mercado de trabajo'),
+    'SL.UEM.1524.ZS': ('desempleo_juvenil_15_24_pct_poblacion_activa', 'Desempleo juvenil de 15 a 24 años (% de la población activa de esa edad)', 'Mercado de trabajo'),
+    'SL.TLF.CACT.ZS': ('participacion_laboral_pct_poblacion_15_o_mas', 'Participación laboral (% de la población de 15 años o más)', 'Mercado de trabajo'),
+    'NV.SRV.TOTL.ZS': ('valor_añadido_servicios_pct_pib', 'Valor añadido de los servicios (% del PIB)', 'Estructura productiva'),
+    'NV.IND.TOTL.ZS': ('valor_añadido_industria_pct_pib', 'Valor añadido de la industria (% del PIB)', 'Estructura productiva'),
+    'NV.AGR.TOTL.ZS': ('valor_añadido_agricultura_pct_pib', 'Valor añadido de la agricultura (% del PIB)', 'Estructura productiva'),
+    'NE.TRD.GNFS.ZS': ('comercio_exterior_pct_pib', 'Comercio exterior: exportaciones más importaciones (% del PIB)', 'Estructura productiva'),
+    'GB.XPD.RSDV.GD.ZS': ('gasto_investigacion_desarrollo_pct_pib', 'Gasto en investigación y desarrollo (% del PIB)', 'Estructura productiva'),
+    'SP.URB.TOTL.IN.ZS': ('poblacion_urbana_pct', 'Población urbana (% de la población total)', 'Demografía y territorio'),
+    'SP.POP.0014.TO.ZS': ('poblacion_0_14_años_pct', 'Población de 0 a 14 años (% de la población total)', 'Demografía y territorio'),
+    'SP.POP.65UP.TO.ZS': ('poblacion_65_o_mas_años_pct', 'Población de 65 años o más (% de la población total)', 'Demografía y territorio'),
+    'IT.NET.USER.ZS': ('usuarios_internet_pct_poblacion', 'Personas que usan internet (% de la población)', 'Desarrollo y servicios'),
+    'SH.XPD.CHEX.GD.ZS': ('gasto_sanitario_pct_pib', 'Gasto sanitario corriente (% del PIB)', 'Desarrollo y servicios'),
+}
+
+
+def descargar_macro_banco_mundial(ruta_carpeta: str, paises: list[str] | None = None, inicio: int = 2010, fin: int = 2023) -> str:
+    """Los indicadores de `INDICADORES_BANCO_MUNDIAL` a `<ruta_carpeta>/macro_banco_mundial.csv`
+    (formato largo: pais, año, indicador (código del Banco Mundial), valor)."""
+    paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
+    observaciones = []
+    for indicador in INDICADORES_BANCO_MUNDIAL:
+        url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
+               f"?format=json&date={inicio}:{fin}&per_page=20000")
+        _, filas = json.loads(_get(url))
+        observaciones += [{'pais': fila['countryiso3code'], 'año': int(fila['date']), 'indicador': indicador, 'valor': fila['value']} for fila in filas]
+    datos = pd.DataFrame(observaciones).sort_values(['indicador', 'pais', 'año'])
+    ruta = os.path.join(ruta_carpeta, 'macro_banco_mundial.csv')
+    datos.to_csv(ruta, index=False)
+    return ruta
+
+
 def descargar_eurostat(ruta_carpeta: str, inicio: int = 2010) -> str:
     """Gasto público por alumno de Eurostat (`educ_uoe_fine09`) a
     `<ruta_carpeta>/gasto_publico_por_alumno_eurostat.csv`
     (columnas: pais, año, nivel, unidad, valor). Solo países de la UE."""
-    geos = ''.join(f'&geo={g}' for g in GEO_EUROSTAT.values())
-    años = ''.join(f'&time={a}' for a in range(inicio, 2024))
+    geos = ''.join(f'&geo={codigo_geo}' for codigo_geo in GEO_EUROSTAT.values())
+    años = ''.join(f'&time={año_consulta}' for año_consulta in range(inicio, 2024))
     url = (f'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{EUROSTAT_GASTO_ALUMNO}'
            f'?format=JSON&lang=EN{geos}{años}')
-    j = json.loads(_get(url))
-    ids, tam = j['id'], j['size']
-    cat = {d: {p: c for c, p in j['dimension'][d]['category']['index'].items()} for d in ids}   # posicion -> codigo
+    respuesta = json.loads(_get(url))
+    ids, tamaños_dimensiones = respuesta['id'], respuesta['size']
+    categorias = {dimension: {posicion_categoria: codigo for codigo, posicion_categoria in respuesta['dimension'][dimension]['category']['index'].items()} for dimension in ids}   # posicion -> codigo
     inverso_geo = {v: k for k, v in GEO_EUROSTAT.items()}
     filas = []
-    for pos, valor in j['value'].items():
-        pos = int(pos)
-        cod = {}
-        for d, n in zip(reversed(ids), reversed(tam)):   # índice plano: la última dimensión varía más rápido
-            cod[d] = cat[d][pos % n]
-            pos //= n
-        filas.append({'pais': inverso_geo[cod['geo']], 'año': int(cod['time']), 'nivel': cod['isced11'],
-                      'unidad': cod['unit'], 'valor': valor})
-    df = pd.DataFrame(filas).sort_values(['pais', 'año', 'nivel', 'unidad'])
+    for posicion_plana, valor in respuesta['value'].items():
+        posicion_plana = int(posicion_plana)
+        codigos_observacion = {}
+        for dimension, tamaño_dimension in zip(reversed(ids), reversed(tamaños_dimensiones)):   # índice plano: la última dimensión varía más rápido
+            codigos_observacion[dimension] = categorias[dimension][posicion_plana % tamaño_dimension]
+            posicion_plana //= tamaño_dimension
+        filas.append({'pais': inverso_geo[codigos_observacion['geo']], 'año': int(codigos_observacion['time']), 'nivel': codigos_observacion['isced11'],
+                      'unidad': codigos_observacion['unit'], 'valor': valor})
+    datos = pd.DataFrame(filas).sort_values(['pais', 'año', 'nivel', 'unidad'])
     ruta = os.path.join(ruta_carpeta, 'gasto_publico_por_alumno_eurostat.csv')
-    df.to_csv(ruta, index=False)
+    datos.to_csv(ruta, index=False)
     return ruta
 
 
@@ -248,10 +284,10 @@ def url_explorador(dataflow: str, version: str, agencia: str = AGENCIA_EDU) -> s
 def enlaces_fuentes() -> pd.DataFrame:
     """Una fila por fichero descargado: proveedor, portal donde se ven los datos y consulta
     de API de muestra (España, último dato) que devuelve el mismo formato que la descarga."""
-    filas = [{'serie': n, 'fichero': f'{n}.csv', 'proveedor': 'OCDE', 'agencia': s.get('agencia', AGENCIA_EDU),
-              'dataflow': s['dataflow'], 'version': s['version'],
-              'formato': 'csv', 'portal': url_explorador(s['dataflow'], s['version'], s.get('agencia', AGENCIA_EDU)),
-              'api': url_oecd(s, ['ESP'], 2000) + '&lastNObservations=1'} for n, s in SERIES_OCDE.items()]
+    filas = [{'serie': nombre_serie, 'fichero': f'{nombre_serie}.csv', 'proveedor': 'OCDE', 'agencia': definicion_serie.get('agencia', AGENCIA_EDU),
+              'dataflow': definicion_serie['dataflow'], 'version': definicion_serie['version'],
+              'formato': 'csv', 'portal': url_explorador(definicion_serie['dataflow'], definicion_serie['version'], definicion_serie.get('agencia', AGENCIA_EDU)),
+              'api': url_oecd(definicion_serie, ['ESP'], 2000) + '&lastNObservations=1'} for nombre_serie, definicion_serie in SERIES_OCDE.items()]
     filas.append({'serie': 'pib_per_capita_ppp', 'fichero': 'pib_per_capita_ppp.csv', 'proveedor': 'Banco Mundial',
                   'dataflow': PIB_BANCO_MUNDIAL, 'version': 'API v2', 'formato': 'wb', 'portal': PORTAL_BM,
                   'api': f'{URL_BANCO_MUNDIAL}/country/ESP/indicator/{PIB_BANCO_MUNDIAL}?format=json&date=2022'})
@@ -271,16 +307,16 @@ def _estado_api(url: str, formato: str) -> str:
     try:
         datos = _get(url, 120)
         if formato == 'csv':
-            n = max(len(datos.decode('utf-8').strip().splitlines()) - 1, 0)
+            n_filas = max(len(datos.decode('utf-8').strip().splitlines()) - 1, 0)
         elif formato == 'wb':
-            n = len(json.loads(datos)[1])
+            n_filas = len(json.loads(datos)[1])
         else:
-            n = len(json.loads(datos)['value'])
-        return f'ok ({n} filas)' if n else 'sin datos'
+            n_filas = len(json.loads(datos)['value'])
+        return f'ok ({n_filas} filas)' if n_filas else 'sin datos'
     except urllib.error.HTTPError as e:
-        return 'límite de consultas (429): reintentar más tarde' if e.code == 429 else f'ERROR: {e}'
+        return 'límite de consultas (429): reintentar más tarde' if error.code == 429 else f'ERROR: {error}'
     except Exception as e:
-        return f'ERROR: {e}'
+        return f'ERROR: {error}'
 
 
 def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
@@ -289,32 +325,32 @@ def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
     HTTP; la API, pidiendo la muestra (`api=False` la omite: la OCDE limita las consultas por hora).
     Devuelve la tabla con `portal_ok` y `api_ok`."""
     import xml.etree.ElementTree as ET
-    t = enlaces_fuentes()
-    ns = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
+    tabla_enlaces = enlaces_fuentes()
+    espacio_nombres_sdmx = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
     catalogos = {}
-    for agencia in t.loc[t['proveedor'] == 'OCDE', 'agencia'].unique():
+    for agencia in tabla_enlaces.loc[tabla_enlaces['proveedor'] == 'OCDE', 'agencia'].unique():
         try:
             raiz = ET.fromstring(_get(f'https://sdmx.oecd.org/public/rest/dataflow/{agencia}', 120))
-            catalogos[agencia] = {d.get('id'): d.get('version') for d in raiz.iter(ns + 'Dataflow')}
+            catalogos[agencia] = {dataflow_catalogo.get('id'): dataflow_catalogo.get('version') for dataflow_catalogo in raiz.iter(espacio_nombres_sdmx + 'Dataflow')}
         except Exception as e:
-            print(f'No se pudo leer el catálogo de la OCDE ({agencia}): {e}')
+            print(f'No se pudo leer el catálogo de la OCDE ({agencia}): {error}')
 
-    def portal_ok(f):
-        if f['proveedor'] == 'OCDE':
-            catalogo = catalogos.get(f['agencia'])
+    def portal_ok(enlace):
+        if enlace['proveedor'] == 'OCDE':
+            catalogo = catalogos.get(enlace['agencia'])
             if catalogo is None:
                 return 'sin comprobar'
-            v = catalogo.get(f['dataflow'])
-            return 'ok' if v == f['version'] else (f'versión actual {v}' if v else 'no existe')
+            version_actual = catalogo.get(enlace['dataflow'])
+            return 'ok' if version_actual == enlace['version'] else (f'versión actual {version_actual}' if version_actual else 'no existe')
         try:
-            _get(f['portal'], 60)
+            _get(enlace['portal'], 60)
             return 'ok'
         except Exception as e:
-            return f'ERROR: {e}'
+            return f'ERROR: {error}'
 
-    t['portal_ok'] = [portal_ok(f) for _, f in t.iterrows()]
-    t['api_ok'] = [_estado_api(f['api'], f['formato']) if api else 'sin comprobar' for _, f in t.iterrows()]
-    return t
+    tabla_enlaces['portal_ok'] = [portal_ok(enlace) for _, enlace in tabla_enlaces.iterrows()]
+    tabla_enlaces['api_ok'] = [_estado_api(enlace['api'], enlace['formato']) if api else 'sin comprobar' for _, enlace in tabla_enlaces.iterrows()]
+    return tabla_enlaces
 
 
 def cargar_oecd(ruta_csv: str) -> pd.DataFrame:
@@ -322,14 +358,14 @@ def cargar_oecd(ruta_csv: str) -> pd.DataFrame:
     `pais`, `año`, `valor` y las dimensiones presentes con nombres cortos
     (`medida`, `nivel`, `institucion`, `fuente`, `tipo_gasto`, `unidad`, `precios`,
     `edad`, `PERS_EXP_LEV`). Descarta las filas sin valor."""
-    d = pd.read_csv(ruta_csv, low_memory=False)
-    d = d.rename(columns={'REF_AREA': 'pais', 'TIME_PERIOD': 'año', 'OBS_VALUE': 'valor',
+    datos = pd.read_csv(ruta_csv, low_memory=False)
+    datos = datos.rename(columns={'REF_AREA': 'pais', 'TIME_PERIOD': 'año', 'OBS_VALUE': 'valor',
                           'EDUCATION_LEV': 'nivel', 'INST_TYPE_EDU': 'institucion',
                           'UNIT_MEASURE': 'unidad', 'PRICE_BASE': 'precios', 'EXP_SOURCE': 'fuente',
                           'EXPENDITURE_TYPE': 'tipo_gasto', 'MEASURE': 'medida',
                           'EXP_DESTINATION': 'institucion', 'AGE': 'edad'})   # en los dataflows de gasto, el tipo de institución es EXP_DESTINATION
-    if 'año' not in d.columns:   # los dataflows de salarios llaman a la columna de tiempo REF_PERIOD
-        d = d.rename(columns={'REF_PERIOD': 'año'})
-    columnas = ['pais', 'año', 'valor'] + [c for c in ('medida', 'nivel', 'institucion', 'fuente', 'tipo_gasto',
-                                                      'unidad', 'precios', 'edad', 'PERS_EXP_LEV') if c in d.columns]
-    return d.loc[d['valor'].notna(), columnas]
+    if 'año' not in datos.columns:   # los dataflows de salarios llaman a la columna de tiempo REF_PERIOD
+        datos = datos.rename(columns={'REF_PERIOD': 'año'})
+    columnas = ['pais', 'año', 'valor'] + [columna for columna in ('medida', 'nivel', 'institucion', 'fuente', 'tipo_gasto',
+                                                      'unidad', 'precios', 'edad', 'PERS_EXP_LEV') if columna in datos.columns]
+    return datos.loc[datos['valor'].notna(), columnas]

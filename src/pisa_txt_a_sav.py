@@ -26,90 +26,90 @@ import pyreadstat
 def _bloque(lineas: list[str], inicio: int) -> tuple[list[str], int]:
     """Líneas desde `inicio` hasta el primer ';' (sin incluir la línea con ';')."""
     salida = []
-    i = inicio
-    while i < len(lineas) and ';' not in lineas[i].split('"')[0]:
-        salida.append(lineas[i])
-        i += 1
-    return salida, i
+    posicion = inicio
+    while posicion < len(lineas) and ';' not in lineas[posicion].split('"')[0]:
+        salida.append(lineas[posicion])
+        posicion += 1
+    return salida, posicion
 
 
 def parsear_script_sas(ruta_sas: str) -> dict:
     """Extrae del `.sas` el esquema del `.txt`: dict con `columnas` ((nombre, inicio,
     fin), base 1), `es_texto`, `etiquetas`, `codigos_faltantes`, `etiquetas_valor`
     y `ancho_linea`."""
-    with open(ruta_sas, encoding='utf-8-sig', errors='replace') as f:
-        lineas = [l.rstrip('\r\n') for l in f]
+    with open(ruta_sas, encoding='utf-8-sig', errors='replace') as fichero:
+        lineas = [linea.rstrip('\r\n') for linea in fichero]
 
     # --- PROC FORMAT: value NOMBRE ... ; -> {formato: {valor: etiqueta}}
     formatos: dict[str, dict] = {}
-    i = 0
-    while i < len(lineas):
-        m = re.match(r'^\s*value\s+(\$?\w+)\s*$', lineas[i], flags=re.I)
-        if m:
-            nombre = m.group(1).upper()
-            cuerpo, i = _bloque(lineas, i + 1)
+    posicion_linea = 0
+    while posicion_linea < len(lineas):
+        coincidencia = re.match(r'^\s*value\s+(\$?\w+)\s*$', lineas[posicion_linea], flags=re.I)
+        if coincidencia:
+            nombre = coincidencia.group(1).upper()
+            cuerpo, posicion_linea = _bloque(lineas, posicion_linea + 1)
             entradas = {}
-            for l in cuerpo:
-                e = re.match(r'^\s*("([^"]*)"|-?\d+(?:\.\d+)?)\s*=\s*"(.*)"\s*$', l)
-                if e:
-                    clave = e.group(2) if e.group(2) is not None else float(e.group(1))
-                    entradas[clave] = e.group(3).strip()
+            for linea in cuerpo:
+                coincidencia_entrada = re.match(r'^\s*("([^"]*)"|-?\d+(?:\.\d+)?)\s*=\s*"(.*)"\s*$', linea)
+                if coincidencia_entrada:
+                    clave = coincidencia_entrada.group(2) if coincidencia_entrada.group(2) is not None else float(coincidencia_entrada.group(1))
+                    entradas[clave] = coincidencia_entrada.group(3).strip()
             formatos[nombre] = entradas
-        i += 1
+        posicion_linea += 1
 
     # --- length: tipo (texto si lleva $)
     es_texto: set[str] = set()
-    idx_length = next(k for k, l in enumerate(lineas) if re.match(r'^\s*length\s*$', l, flags=re.I))
+    idx_length = next(posicion for posicion, linea in enumerate(lineas) if re.match(r'^\s*length\s*$', linea, flags=re.I))
     cuerpo, _ = _bloque(lineas, idx_length + 1)
-    for l in cuerpo:
-        m = re.match(r'^\s*(\w+)\s+(\$)?\s*\d+\s*$', l)
-        if m and m.group(2):
-            es_texto.add(m.group(1))
+    for linea in cuerpo:
+        coincidencia = re.match(r'^\s*(\w+)\s+(\$)?\s*\d+\s*$', linea)
+        if coincidencia and coincidencia.group(2):
+            es_texto.add(coincidencia.group(1))
 
     # --- infile / input
     ancho_linea = None
     idx_input = None
-    for k, l in enumerate(lineas):
-        m = re.search(r'linesize\s*=\s*(\d+)', l, flags=re.I)
-        if m:
-            ancho_linea = int(m.group(1))
-        if re.match(r'^\s*input\s*$', l, flags=re.I):
-            idx_input = k
+    for posicion, linea in enumerate(lineas):
+        coincidencia = re.search(r'linesize\s*=\s*(\d+)', linea, flags=re.I)
+        if coincidencia:
+            ancho_linea = int(coincidencia.group(1))
+        if re.match(r'^\s*input\s*$', linea, flags=re.I):
+            idx_input = posicion
     cuerpo, _ = _bloque(lineas, idx_input + 1)
     columnas = []
-    for l in cuerpo:
-        m = re.match(r'^\s*(\w+)\s+\$?\s*(\d+)(?:\s*-\s*(\d+))?\s*$', l)
-        if m:
-            ini = int(m.group(2))
-            fin = int(m.group(3)) if m.group(3) else ini
-            columnas.append((m.group(1), ini, fin))
+    for linea in cuerpo:
+        coincidencia = re.match(r'^\s*(\w+)\s+\$?\s*(\d+)(?:\s*-\s*(\d+))?\s*$', linea)
+        if coincidencia:
+            columna_inicio = int(coincidencia.group(2))
+            columna_fin = int(coincidencia.group(3)) if coincidencia.group(3) else columna_inicio
+            columnas.append((coincidencia.group(1), columna_inicio, columna_fin))
 
     # --- label y format de valores (el que viene después de label)
     etiquetas: dict[str, str] = {}
-    idx_label = next(k for k, l in enumerate(lineas) if k > idx_input and re.match(r'^\s*label\s*$', l, flags=re.I))
+    idx_label = next(posicion for posicion, linea in enumerate(lineas) if posicion > idx_input and re.match(r'^\s*label\s*$', linea, flags=re.I))
     cuerpo, fin_label = _bloque(lineas, idx_label + 1)
-    for l in cuerpo:
-        m = re.match(r'^\s*(\w+)\s*=\s*"(.*)"\s*$', l)
-        if m:
-            etiquetas[m.group(1).upper()] = m.group(2).strip()
+    for linea in cuerpo:
+        coincidencia = re.match(r'^\s*(\w+)\s*=\s*"(.*)"\s*$', linea)
+        if coincidencia:
+            etiquetas[coincidencia.group(1).upper()] = coincidencia.group(2).strip()
 
     etiquetas_valor: dict[str, dict] = {}
-    idx_fmt = next((k for k in range(fin_label, len(lineas)) if re.match(r'^\s*format\s*$', lineas[k], flags=re.I)), None)
+    idx_fmt = next((posicion for posicion in range(fin_label, len(lineas)) if re.match(r'^\s*format\s*$', lineas[posicion], flags=re.I)), None)
     if idx_fmt is not None:
         cuerpo, _ = _bloque(lineas, idx_fmt + 1)
-        for l in cuerpo:
-            m = re.match(r'^\s*(\w+)\s+(\$?\w+)\.\s*$', l)
-            if m and m.group(2).upper() in formatos:
-                etiquetas_valor[m.group(1)] = formatos[m.group(2).upper()]
+        for linea in cuerpo:
+            coincidencia = re.match(r'^\s*(\w+)\s+(\$?\w+)\.\s*$', linea)
+            if coincidencia and coincidencia.group(2).upper() in formatos:
+                etiquetas_valor[coincidencia.group(1)] = formatos[coincidencia.group(2).upper()]
 
     # --- recodificación de no-respuesta: if X=a or X=. then X=.N; if X=b ... .I; if X=c ... .M;
     codigos: dict[str, list] = {}
     patron = re.compile(r'if\s+(\w+)=(\d+)\s+or\s+\1=\.\s+then\s+\1=\.N;\s*'
                         r'if\s+\1=(\d+)\s+then\s+\1=\.I;\s*if\s+\1=(\d+)\s+then\s+\1=\.M;')
-    for l in lineas:
-        m = patron.search(l)
-        if m:
-            codigos[m.group(1)] = [float(m.group(2)), float(m.group(3)), float(m.group(4))]
+    for linea in lineas:
+        coincidencia = patron.search(linea)
+        if coincidencia:
+            codigos[coincidencia.group(1)] = [float(coincidencia.group(2)), float(coincidencia.group(3)), float(coincidencia.group(4))]
 
     return {
         'columnas': columnas,
@@ -124,50 +124,50 @@ def parsear_script_sas(ruta_sas: str) -> dict:
 def leer_ancho_fijo(ruta_txt: str, esquema: dict, chunk_filas: int = 50_000) -> pd.DataFrame:
     """Lee el .txt de ancho fijo según `esquema` (salida de `parsear_script_sas`)."""
     ancho = esquema['ancho_linea']
-    with open(ruta_txt, 'rb') as f:
-        f.seek(ancho)
-        fin_linea = f.read(2)
+    with open(ruta_txt, 'rb') as fichero:
+        fichero.seek(ancho)
+        fin_linea = fichero.read(2)
     terminador = 2 if fin_linea == b'\r\n' else 1
     largo = ancho + terminador
-    tam = os.path.getsize(ruta_txt)
-    n_filas, resto = divmod(tam, largo)
+    tamaño_fichero = os.path.getsize(ruta_txt)
+    n_filas, resto = divmod(tamaño_fichero, largo)
     if resto:
-        raise ValueError(f'El tamaño de {ruta_txt} ({tam}) no es múltiplo de la longitud de línea ({largo}).')
+        raise ValueError(f'El tamaño de {ruta_txt} ({tamaño_fichero}) no es múltiplo de la longitud de línea ({largo}).')
 
-    mm = np.memmap(ruta_txt, dtype=np.uint8, mode='r', shape=(n_filas, largo))
+    mapa_memoria = np.memmap(ruta_txt, dtype=np.uint8, mode='r', shape=(n_filas, largo))
     columnas = esquema['columnas']
     es_texto = esquema['es_texto']
-    cols_num = [c for c in columnas if c[0] not in es_texto]
-    cols_txt = [c for c in columnas if c[0] in es_texto]
+    columnas_numericas = [columna_esquema for columna_esquema in columnas if columna_esquema[0] not in es_texto]
+    columnas_texto = [columna_esquema for columna_esquema in columnas if columna_esquema[0] in es_texto]
 
-    matriz = np.empty((n_filas, len(cols_num)), dtype=np.float64)
-    textos = {nombre: np.empty(n_filas, dtype=object) for nombre, _, _ in cols_txt}
+    matriz = np.empty((n_filas, len(columnas_numericas)), dtype=np.float64)
+    textos = {nombre: np.empty(n_filas, dtype=object) for nombre, _, _ in columnas_texto}
     ilegibles = {}
 
-    for ini_f in range(0, n_filas, chunk_filas):
-        fin_f = min(ini_f + chunk_filas, n_filas)
-        bloque = mm[ini_f:fin_f]
-        for k, (nombre, a, b) in enumerate(cols_num):
-            campo = np.ascontiguousarray(bloque[:, a - 1:b]).view(f'S{b - a + 1}').ravel()
+    for fila_inicio in range(0, n_filas, chunk_filas):
+        fila_fin = min(fila_inicio + chunk_filas, n_filas)
+        bloque = mapa_memoria[fila_inicio:fila_fin]
+        for posicion_numerica, (nombre, columna_inicio, columna_fin) in enumerate(columnas_numericas):
+            campo = np.ascontiguousarray(bloque[:, columna_inicio - 1:columna_fin]).view(f'S{columna_fin - columna_inicio + 1}').ravel()
             crudo = np.char.decode(campo, 'latin-1')
             valores = pd.to_numeric(pd.Series(crudo), errors='coerce').to_numpy()
-            n_mal = int(np.sum(np.isnan(valores) & (np.char.strip(crudo) != '')))
-            if n_mal:
-                ilegibles[nombre] = ilegibles.get(nombre, 0) + n_mal
-            matriz[ini_f:fin_f, k] = valores
-        for nombre, a, b in cols_txt:
-            campo = np.ascontiguousarray(bloque[:, a - 1:b]).view(f'S{b - a + 1}').ravel()
-            textos[nombre][ini_f:fin_f] = np.char.strip(np.char.decode(campo, 'latin-1'))
+            n_no_numericos = int(np.sum(np.isnan(valores) & (np.char.strip(crudo) != '')))
+            if n_no_numericos:
+                ilegibles[nombre] = ilegibles.get(nombre, 0) + n_no_numericos
+            matriz[fila_inicio:fila_fin, posicion_numerica] = valores
+        for nombre, columna_inicio, columna_fin in columnas_texto:
+            campo = np.ascontiguousarray(bloque[:, columna_inicio - 1:columna_fin]).view(f'S{columna_fin - columna_inicio + 1}').ravel()
+            textos[nombre][fila_inicio:fila_fin] = np.char.strip(np.char.decode(campo, 'latin-1'))
 
     if ilegibles:
         print(f'  Aviso: valores no numéricos convertidos a NaN: {ilegibles}')
 
     # Códigos de no-respuesta -> NaN
-    indice = {nombre: k for k, (nombre, _, _) in enumerate(cols_num)}
-    for nombre, cods in esquema['codigos_faltantes'].items():
+    indice = {nombre: posicion_numerica for posicion_numerica, (nombre, _, _) in enumerate(columnas_numericas)}
+    for nombre, codigos in esquema['codigos_faltantes'].items():
         if nombre in indice:
-            col = matriz[:, indice[nombre]]
-            col[np.isin(col, cods)] = np.nan
+            valores_columna = matriz[:, indice[nombre]]
+            valores_columna[np.isin(valores_columna, codigos)] = np.nan
 
     datos = {}
     for nombre, _, _ in columnas:
@@ -184,14 +184,14 @@ def convertir_txt_a_sav(ruta_txt: str, ruta_sas: str, ruta_sav: str, chunk_filas
     print(f'{os.path.basename(ruta_sas)}: {len(esquema["columnas"])} columnas, '
           f'{len(esquema["es_texto"])} de texto, {len(esquema["codigos_faltantes"])} con códigos de no-respuesta, '
           f'{len(esquema["etiquetas_valor"])} con etiquetas de valor')
-    df = leer_ancho_fijo(ruta_txt, esquema, chunk_filas)
-    print(f'  Leídas {len(df):,} filas × {df.shape[1]} columnas')
+    datos = leer_ancho_fijo(ruta_txt, esquema, chunk_filas)
+    print(f'  Leídas {len(datos):,} filas × {datos.shape[1]} columnas')
 
-    etiquetas_col = [esquema['etiquetas'].get(c.upper(), '')[:255] for c in df.columns]
+    etiquetas_col = [esquema['etiquetas'].get(columna.upper(), '')[:255] for columna in datos.columns]
 
     etiquetas_valor = {}
     for nombre, mapa in esquema['etiquetas_valor'].items():
-        if nombre not in df.columns:
+        if nombre not in datos.columns:
             continue
         if nombre in esquema['es_texto']:
             validas = {k: v[:120] for k, v in mapa.items() if isinstance(k, str) and len(k.encode('latin-1', 'replace')) <= 8}
@@ -201,6 +201,6 @@ def convertir_txt_a_sav(ruta_txt: str, ruta_sas: str, ruta_sav: str, chunk_filas
             etiquetas_valor[nombre] = validas
 
     os.makedirs(os.path.dirname(os.path.abspath(ruta_sav)), exist_ok=True)
-    pyreadstat.write_sav(df, ruta_sav, column_labels=etiquetas_col, variable_value_labels=etiquetas_valor)
+    pyreadstat.write_sav(datos, ruta_sav, column_labels=etiquetas_col, variable_value_labels=etiquetas_valor)
     print(f'  Guardado: {ruta_sav} ({os.path.getsize(ruta_sav) / 1e6:.0f} MB)')
-    return df
+    return datos
