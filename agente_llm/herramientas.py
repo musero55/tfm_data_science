@@ -879,7 +879,6 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
     except Exception as e:
         return f"Error en la simulación de escenario: {str(e)}"
 
-#TODO Faltan las predicciones a futuro, pensar como se haría
 
 # ==============================================================================
 # HERRAMIENTAS DE VISUALIZACION
@@ -969,16 +968,18 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
 #         plt.close('all')
 #         return f"Error de Python al ejecutar tu código: {str(e)}. Corrige tu código e inténtalo de nuevo."
     
+    
 # ==============================================================================
 # LISTA DE HERRAMIENTAS EXPORTADAS
 # ==============================================================================
 pisa_tools = [
-    get_country_data, 
+    get_country_data,
     get_cross_country_stats,
     get_cross_variable_stats,
+    calculate_correlation,
+    analyze_temporal_trend,
+    predict_future_trend,
     get_feature_importance,
     predict_and_explain_performance,
     simulate_scenario,
-    calculate_correlation,
-    analyze_temporal_trend
 ]
