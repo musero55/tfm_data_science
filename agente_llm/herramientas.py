@@ -83,6 +83,14 @@ SUBJECT_NAMES_ES = {
     "scie": "Ciencias"
 }
 
+ENCODED_COLS = {
+    "ECS_categoria_Bajo",
+    "ECS_categoria_Medio",
+    "Perfil_Pais_Gasto bajo_Financiación privada alta",
+    "Perfil_Pais_Gasto medio-alto_Esfuerzo y financiación privada altos",
+    "Perfil_Pais_Gasto medio-bajo",
+}
+
 def subject_normalizer(subject: str) -> str:
     """Normaliza el nombre de la asignatura a 'math', 'read' o 'scie'."""
     sub = str(subject).lower().strip()
@@ -105,12 +113,10 @@ def clean_variable_name(variable: str) -> str:
     return var_clean
 
 def get_available_base_variables() -> list[str]:
-    """Extrae la lista de nombres de variables base disponibles en df_paises (sin sufijo de año)."""
-    base_vars = set()
-    for col in df_paises.columns:
-        if col in ("CNT", "pais"):
-            continue
-        base_vars.add(clean_variable_name(col))
+    """Extrae las variables base desde df_estratos excluyendo metadatos y variables One-Hot."""
+    excluded = {"CNT", "pais", "year"} | ENCODED_COLS
+    base_vars = {col for col in df_estratos.columns if col not in excluded}
+    base_vars.update({"media_math_pais", "media_read_pais", "media_scie_pais"})
     return sorted(base_vars)
 
 def scale_derived_column(df_new: pd.DataFrame, df_old: pd.DataFrame, derived_col: str, num_col: str, den_col: str) -> None:
@@ -828,15 +834,16 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
         #Aplicamos los cambios indicados en modifications
         cambios_texto = []
         columnas_modificadas = set()
+        cols_modificables = [c for c in columnas_del_modelo if c not in ENCODED_COLS and c != "year"]
 
         for raw_col, nuevo_valor in modifications.items():
             col= clean_variable_name(raw_col)
-            if col not in df_mod.columns or col not in columnas_del_modelo:
+            if col not in df_mod.columns or col not in cols_modificables:
                             cols_validas = ", ".join([c for c in columnas_del_modelo if c != "year"])
                             return (
-                                f"Error: La variable '{raw_col}' no existe entre las variables del modelo.\n"
-                                f"Variables modificables disponibles: {cols_validas}"
-                            )
+                                    f"Error: La variable '{raw_col}' no es modificable o no existe.\n"
+                                    f"Variables modificables disponibles: {', '.join(cols_modificables)}"
+                                    )
             valor_antiguo_medio = float(df_mod[raw_col].mean()) #Guardamos el valor antifuo
             nuevo_val_float = float(nuevo_valor)
 
@@ -968,7 +975,7 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
 #         plt.close('all')
 #         return f"Error de Python al ejecutar tu código: {str(e)}. Corrige tu código e inténtalo de nuevo."
     
-    
+
 # ==============================================================================
 # LISTA DE HERRAMIENTAS EXPORTADAS
 # ==============================================================================
