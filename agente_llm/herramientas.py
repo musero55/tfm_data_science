@@ -442,7 +442,13 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
                 f"Error: Verifica que ambas variables existan. Recibido: '{f_base}' y '{t_base}'.\n"
                 f"Variables disponibles: {vars_disponibles}"
             )
-        
+
+        #Obtenemos los paises que son nulos para traquearlos 
+        paises_nulos_filtro = df_paises[df_paises[filter_col].isna()]["CNT"].tolist()
+        nota_nulos_filtro = (
+            f"\n- Países de la OCDE no evaluados por carecer de dato en '{filter_col}' ({len(paises_nulos_filtro)}): {', '.join(paises_nulos_filtro)}"
+            if paises_nulos_filtro else ""
+        )
 
         # Filtramos primero solo por la columna de condición para no perder países que cumplen el criterio
         df_con_filtro = df_paises.dropna(subset=[filter_col])
@@ -469,7 +475,9 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
             return (
                 f"Análisis condicional ({year}):\n"
                 f"- Condición aplicada: {filter_col} {operator} {filter_value}\n"
-                f"- Número de países que cumplen la condición: {total_cumplen} ({', '.join(paises_cumplen)})"
+                f"- Número de países que cumplen la condición: {total_cumplen} ({', '.join(paises_cumplen)})",
+                nota_nulos_filtro
+                
             )
         
         # Para 'mean' o 'median', comprobamos cuántos tienen dato válido en target_col
@@ -502,7 +510,7 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
             f"- Condición aplicada: {filter_col} {operator} {filter_value}\n"
             f"- Países que cumplen la condición ({total_cumplen}): {', '.join(paises_cumplen)}\n"
             f"- Países con dato válido en '{target_col}' ({len(paises_validos)}): {', '.join(paises_validos)}"
-            f"{nota_excluidos}\n"
+            f"{nota_nulos_filtro}{nota_excluidos}\n"
             f"- La {nombre_metrica} de '{target_col}' para este grupo es: {resultado:.2f}"
         )
 
