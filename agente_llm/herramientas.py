@@ -608,6 +608,86 @@ def analyze_temporal_trend(CNT: str, variable: str) -> str:
         )
     except Exception as e:
         return f"Error al consultar la tendencia temporal: {str(e)}"    
+
+#TODO Herramienta de prueba (OLS o utilizar el modelo para predecir ?)
+@tool
+def predict_future_trend(CNT: str, variable: str = "media_math_pais", target_year: int = 2025) -> str:
+    """
+    Projects the future value of an educational score or socioeconomic indicator for a specific country
+    (defaulting to the next PISA cycle, 2025) using ordinary least squares (OLS) linear trend projection
+    over the historical PISA series (2012, 2015, 2018, 2022).
+
+    Parameters:
+    - CNT: 3-letter ISO country code (e.g., 'ESP', 'FIN', 'MEX').
+    - variable: Base variable name without year suffix (e.g., 'media_math_pais', 'media_read_pais', 'media_scie_pais', 'gasto_alumno_secundaria_usd_ppp'). Defaults to 'media_math_pais'.
+    - target_year: Future year to project (must be > 2022, defaults to 2025 for the next PISA cycle).
+    """
+    try:
+        if target_year <= 2022:
+            return "Error: Para consultar años históricos (2012-2022) usa 'get_country_data' o 'analyze_temporal_trend'. El año objetivo debe ser mayor a 2022 (ej. 2025)."
+
+        codigo_pais = CNT.upper().strip()
+        var_base = clean_variable_name(variable)
+        registro = df_paises[df_paises["CNT"] == codigo_pais]
+
+        if registro.empty:
+            return f"Error: No se encontraron registros para el código de país '{codigo_pais}'."
+
+        x_years = []
+        y_vals = []
+
+        for y in PISA_YEARS:
+            col = f"{var_base}_{y}"
+            if col not in registro.columns:
+                vars_disponibles = ", ".join(get_available_base_variables())
+                return (
+                    f"Error: La variable '{var_base}' no existe.\n"
+                    f"Variables disponibles: {vars_disponibles}"
+                )
+            val = registro.iloc[0][col]
+            if pd.notna(val) and isinstance(val, (int, float, np.number)):
+                x_years.append(float(y))
+                y_vals.append(float(val))
+
+        if len(x_years) < 2:
+            return (
+                f"Error: '{codigo_pais}' solo dispone de {len(x_years)} dato(s) histórico(s) para '{var_base}'. "
+                f"Se requieren al menos 2 ediciones para realizar una proyección lineal."
+            )
+
+        x_arr = np.array(x_years)
+        y_arr = np.array(y_vals)
+
+        # Ajuste lineal por mínimos cuadrados: y = pendiente * año + intercepto
+        pendiente, intercepto = np.polyfit(x_arr, y_arr, 1)
+        proyeccion = pendiente * target_year + intercepto
+
+        # Cálculo de R^2 para informar de la fiabilidad de la tendencia lineal
+        y_pred_hist = pendiente * x_arr + intercepto
+        ss_res = np.sum((y_arr - y_pred_hist) ** 2)
+        ss_tot = np.sum((y_arr - np.mean(y_arr)) ** 2)
+        r2 = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 1.0
+
+        ultimo_anio = int(x_arr[-1])
+        ultimo_valor = y_arr[-1]
+        cambio_proyectado = proyeccion - ultimo_valor
+        signo_cambio = "+" if cambio_proyectado > 0 else ""
+        signo_pendiente = "+" if pendiente > 0 else ""
+
+        serie_texto = ", ".join([f"{int(a)}: {v:.2f}" for a, v in zip(x_arr, y_arr)])
+
+        return (
+            f"Proyección de tendencia lineal para {codigo_pais} — Variable '{var_base}' (Objetivo: PISA {target_year}):\n"
+            f"- Serie histórica utilizada ({len(x_arr)} ciclos): {serie_texto}\n"
+            f"- Último valor registrado ({ultimo_anio}): {ultimo_valor:.2f}\n"
+            f"- Valor proyectado para {target_year}: {proyeccion:.2f} ({signo_cambio}{cambio_proyectado:.2f} respecto a {ultimo_anio})\n"
+            f"- Ritmo de variación anual (pendiente): {signo_pendiente}{pendiente:.2f} por año ({signo_pendiente}{pendiente * 3:.2f} por ciclo trienal PISA)\n"
+            f"- Bondad de ajuste lineal (R²): {r2:.3f}"
+        )
+
+    except Exception as e:
+        return f"Error al calcular la proyección futura: {str(e)}"
+    
 # ==============================================================================
 # HERRAMIENTAS DE MODELADO E INFERENCIA
 # ==============================================================================
