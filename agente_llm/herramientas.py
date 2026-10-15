@@ -758,9 +758,11 @@ def get_feature_importance(subject:str = 'math') -> str:
 
 
 @tool
-def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "scie"] = "math", year: int = 2022) -> str:
+def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "scie"] = "math", year: Union[int,str] = 'all') -> str:
     """
-    Provides the baseline ML predicted subject score and SHAP feature attribution for a country's profile in a specific PISA cycle.
+    Provides the ML predicted subject score and top SHAP positive/negative drivers for a country.
+    Use year='all' to see if the most influential factors for that country have changed across 2012, 2015, 2018, and 2022.
+
     Use this tool when the user asks:
     - Why a country achieves its score according to the ML model.
     - Which socioeconomic or educational factors are helping (positive SHAP) or penalizing (negative SHAP) a country.
@@ -769,60 +771,56 @@ def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "
     Parameters:
     - CNT: 3-letter ISO code (e.g., 'ESP', 'FIN', 'MEX').
     - subject: Academic subject. Must be one of: 'math' (Mathematics), 'read' (Reading/Literature), 'scie' (Science). Defaults to 'math'.
-    - year: PISA cycle year (2012, 2015, 2018, 2022). Defaults to 2022.
+    - year: PISA cycle year (2012, 2015, 2018, 2022) default all, to make global comparations. 
     """
   
     try:
-        if year not in PISA_YEARS:
-            return f"Error: El año '{year}' no es válido. Los ciclos disponibles son: {PISA_YEARS}."
-        
         sub = subject_normalizer(subject)
-        codigo_pais = CNT.upper()
+        codigo_pais = CNT.upper().strip()
         modelo = MODELS.get(sub)
-
         explainer_sub = EXPLAINERS.get(sub)
         if not modelo or not explainer_sub:
-            return f"Error: Modelo o explicador SHAP no disponible para la materia '{subject}'."
-        
-        df_orig = df_estratos[(df_estratos['CNT'] == codigo_pais) & (df_estratos['year'] == year)].copy()
-        
-        if df_orig.empty:
-            return f"Error: No encontré datos para el código '{codigo_pais}' en el año {year} en la base estratificada."
+            return f"Error: Modelo o explicador SHAP no disponible para '{subject}'."
 
+        #Años sobre los que explicar el desempeño
+        years_to_run = PISA_YEARS if str(year).lower().strip() in ("all", "todos") else [int(year)]
 
-        df_modelo = df_orig[columnas_del_modelo]
-
-        # Predicción y SHAP values del modelo
-        prediccion_media = modelo.predict(df_modelo).mean()
-        valores_shap_matriz = explainer_sub.shap_values(df_modelo)
-        shap_medio_pais = valores_shap_matriz.mean(axis=0)
-
-        #Valor base esperado -> Valor si el modelo no sabe nada de los datos
+        #Valor medido sin conocer los datos
         valor_base = explainer_sub.expected_value
-
-        #Chekeamos si el modelo viene en un formato tipo lista o numpy array, en cuyo caso nos quedamos con el primer valor
         if isinstance(valor_base, (list, np.ndarray)):
-
             valor_base = valor_base[0]
 
-        #Convertimos los valores SHAP medios a una serie de pandas con las columnas como indices con sus respectivos valores
-        s_impactos = pd.Series(shap_medio_pais, index=columnas_del_modelo)
+        salida = [f"Explicabilidad SHAP para {codigo_pais} en {SUBJECT_NAMES_ES[sub]} (Base global: {valor_base:.2f} pts):"]
+        for y in years_to_run:
+            #Comprobamos el año
+            if y not in PISA_YEARS:
+                return f"Error: Año '{y}' no válido. Usa {PISA_YEARS} o 'all'."
+            df_orig = df_estratos[(df_estratos['CNT'] == codigo_pais) & (df_estratos['year'] == y)]
 
-        # Cogemos las 3 features que más suman/ restan (valores positivos/negativos más altos/bajos)
-        variables_suman = [f"{col} (+{val:.2f})" for col, val in s_impactos[s_impactos > 0].nlargest(3).items()]
-        variables_restan = [f"{col} ({val:.2f})" for col, val in s_impactos[s_impactos < 0].nsmallest(3).items()]
+            if df_orig.empty:
+                salida.append(f"- {y}: Sin datos.") #Variable sin datos para ese año
+                continue
+            #Filtramos las columnas usadas para entrenar el modelo
+            df_modelo = df_orig[columnas_del_modelo]
+            pred = modelo.predict(df_modelo).mean()
 
-        nombre_asignatura = SUBJECT_NAMES_ES[sub]
+            #obtenemos los valores SHAP con los datos del dataframe (Ej. un pais, o vairables modificadas)
+            shap_medio = explainer_sub.shap_values(df_modelo).mean(axis=0)
+            s_imp = pd.Series(shap_medio, index=columnas_del_modelo)
 
-        return (
-            f"Análisis Predictivo y Explicabilidad SHAP para {codigo_pais} en {nombre_asignatura} (PISA {year}):\n"
-            f"- Valor base de referencia (media global del modelo): {valor_base:.2f} puntos.\n"
-            f"- Predicción media del modelo para {codigo_pais}: {prediccion_media:.2f} puntos.\n"
-            f"- Top Factores impulsores (suman puntos): {', '.join(variables_suman) if variables_suman else 'Ninguno significativo'}\n"
-            f"- Top Factores penalizadores (restan puntos): {', '.join(variables_restan) if variables_restan else 'Ninguno significativo'}\n"
-        )
+            #obtenemos el top 3 variables que mas suman / restan
+            suman = [f"{c} (+{v:.2f})" for c, v in s_imp[s_imp > 0].nlargest(3).items()]
+            restan = [f"{c} ({v:.2f})" for c, v in s_imp[s_imp < 0].nsmallest(3).items()]
+
+            #Por cada edicion (año) que se quiere comprobar se dan sus valores SHAP en una misma salida
+            salida.append(
+                f"- Edición {y} (Predicción: {pred:.2f} pts):\n"
+                f"    Impulsores (+): {', '.join(suman) if suman else 'Ninguno'}\n"
+                f"    Penalizadores (-): {', '.join(restan) if restan else 'Ninguno'}"
+            )
+        return "\n".join(salida)
     except Exception as e:
-        return f"Error al ejecutar el explicador SHAP: {str(e)}"
+        return f"Error al ejecutar SHAP: {str(e)}"
     
 @tool
 def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "read", "scie"] = "math", year: int = 2022) -> str:
