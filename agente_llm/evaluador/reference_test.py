@@ -113,6 +113,9 @@ caso_patrones_bajas_notas = {
 }
 
 
+# IDEA : "¿El gasto por alumno en 2012 o 2015 se correlaciona con las notas de 2022?
+
+"""Solución propuesta: Documentar bien a_column y b_column en el docstring indicando que por defecto deben llevar el mismo sufijo de año (ej. _2022), pero sin bloquear en el código que tengan años distintos. Si los años de a_column y b_column difieren, podemos añadir una nota automática en el return advirtiendo que es una correlación intertemporal, e incluir también el p-valor (scipy.stats.pearsonr) para que el agente sepa si la correlación es estadísticamente significativa o puro azar."""
 
 #Unimos todos los casos de test para poder ser usados por el juez
 CASOS_TEST_PISA = [caso_estudio_deberes,caso_estudio_x]
