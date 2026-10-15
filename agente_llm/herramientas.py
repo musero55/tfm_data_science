@@ -288,7 +288,7 @@ GUARDRAILS & SCOPE (Strict):
 # ==============================================================================
 
 @tool
-def get_country_data(CNT: str, year: int) -> str:
+def get_country_data(CNT: str, year: int = 2022) -> str:
     """
         Retrieve historical PISA educational and socioeconomic indicators for a specific country and edition.
         
@@ -343,8 +343,9 @@ def get_cross_country_stats( variable: str, year: Union[int, str] = 2022, operat
     Computes comparative cross-country statistics and rankings using the country-level dataset (df_paises).
     
     Parameters:
-    - column_name: Exact column name including the year suffix (e.g., 'media_math_pais_2022', 'Gasto_Alumno_PPP_2015', 'tiempo_deberes_totales_diarios_2018').
-    - operation: Operation to perform. Options: 'mean' (global cross-country average), 'top' (highest scoring countries), 'bottom' (lowest scoring countries).
+    - variable: Base variable name WITHOUT the year suffix (e.g., 'media_math_pais', 'gasto_alumno_secundaria_usd_ppp', 'tiempo_deberes_totales_diarios').
+    - year: PISA cycle year (2012, 2015, 2018, 2022) or 'all' to compute the historical average across all available cycles. Defaults to 2022.
+    - operation: Operation to perform. Options: 'mean' (or 'media', global cross-country average), 'top' (highest scoring countries), 'bottom' (lowest scoring countries).
     - top_n: Number of countries to display when 'top' or 'bottom' is selected (defaults to 5).
     """
 
@@ -476,7 +477,7 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
                 f"Análisis condicional ({year}):\n"
                 f"- Condición aplicada: {filter_col} {operator} {filter_value}\n"
                 f"- Número de países que cumplen la condición: {total_cumplen} ({', '.join(paises_cumplen)})",
-                nota_nulos_filtro
+                f"{nota_nulos_filtro}"
                 
             )
         
@@ -723,7 +724,11 @@ def get_feature_importance(subject:str = 'math') -> str:
         
         #Obtenemos las importancias
         importances = modelo.feature_importances_
-        pesos = dict(zip(columnas_del_modelo, importances))
+        pesos = { #Evitamos que se incluyan en los pesos las variables categoricas codificadas
+            col: imp
+            for col, imp in zip(columnas_del_modelo, importances)
+            if col not in ENCODED_COLS
+        }
 
         #Ordenamos las claves, segun su valor en el diccionario ( nos quedamos con las 10 mas relevantes)
         top_cols = sorted(pesos, key=pesos.get, reverse=True)[:10]
@@ -767,7 +772,7 @@ def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "
         if not modelo or not explainer_sub:
             return f"Error: Modelo o explicador SHAP no disponible para la materia '{subject}'."
         
-        df_orig = df_estratos[(df_estratos['CNT'] == CNT) & (df_estratos['year'] == 2022)].copy()
+        df_orig = df_estratos[(df_estratos['CNT'] == CNT) & (df_estratos['year'] == year)].copy()
         
         if df_orig.empty:
             return f"Error: No encontré datos para el código '{CNT}' en la base estratificada."
@@ -852,7 +857,7 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
                                     f"Error: La variable '{raw_col}' no es modificable o no existe.\n"
                                     f"Variables modificables disponibles: {', '.join(cols_modificables)}"
                                     )
-            valor_antiguo_medio = float(df_mod[raw_col].mean()) #Guardamos el valor antifuo
+            valor_antiguo_medio = float(df_mod[col].mean()) #Guardamos el valor antifuo
             nuevo_val_float = float(nuevo_valor)
 
             #Calculo de la diferencia de valor para preservar la varianza
