@@ -476,7 +476,7 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
             return (
                 f"Análisis condicional ({year}):\n"
                 f"- Condición aplicada: {filter_col} {operator} {filter_value}\n"
-                f"- Número de países que cumplen la condición: {total_cumplen} ({', '.join(paises_cumplen)})",
+                f"- Número de países que cumplen la condición: {total_cumplen} ({', '.join(paises_cumplen)})"
                 f"{nota_nulos_filtro}"
                 
             )
@@ -772,10 +772,10 @@ def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "
         if not modelo or not explainer_sub:
             return f"Error: Modelo o explicador SHAP no disponible para la materia '{subject}'."
         
-        df_orig = df_estratos[(df_estratos['CNT'] == CNT) & (df_estratos['year'] == year)].copy()
+        df_orig = df_estratos[(df_estratos['CNT'] == codigo_pais) & (df_estratos['year'] == year)].copy()
         
         if df_orig.empty:
-            return f"Error: No encontré datos para el código '{CNT}' en la base estratificada."
+            return f"Error: No encontré datos para el código '{codigo_pais}' en el año {year} en la base estratificada."
 
 
         df_modelo = df_orig[columnas_del_modelo]
@@ -850,13 +850,12 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
         cols_modificables = [c for c in columnas_del_modelo if c not in ENCODED_COLS and c != "year"]
 
         for raw_col, nuevo_valor in modifications.items():
-            col= clean_variable_name(raw_col)
+            col = clean_variable_name(raw_col)
             if col not in df_mod.columns or col not in cols_modificables:
-                            cols_validas = ", ".join([c for c in columnas_del_modelo if c != "year"])
-                            return (
-                                    f"Error: La variable '{raw_col}' no es modificable o no existe.\n"
-                                    f"Variables modificables disponibles: {', '.join(cols_modificables)}"
-                                    )
+                return (
+                    f"Error: La variable '{raw_col}' no es modificable o no existe.\n"
+                    f"Variables modificables disponibles: {', '.join(cols_modificables)}"
+                )
             valor_antiguo_medio = float(df_mod[col].mean()) #Guardamos el valor antifuo
             nuevo_val_float = float(nuevo_valor)
 
