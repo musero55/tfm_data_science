@@ -91,6 +91,14 @@ ENCODED_COLS = {
     "Perfil_Pais_Gasto medio-bajo",
 }
 
+#Mapeo de algunas variables de estrato con su correspondencia a nivel de pais
+STRATUM_TO_COUNTRY_MAP = {
+    "escs_estrato": "escs_media_pais",
+    "brecha_escs_local": "escs_media_pais", #Cual es su correspondencia por año ?
+    "brecha_deberes_local": "tiempo_deberes_totales_diarios", #Cual es su correspondencia por año ?
+    #"Presion_Academica_Neta": "tiempo_deberes_totales_diarios", #TODO Consultar con Alberto
+}
+
 def subject_normalizer(subject: str) -> str:
     """Normaliza el nombre de la asignatura a 'math', 'read' o 'scie'."""
     sub = str(subject).lower().strip()
@@ -101,22 +109,23 @@ def subject_normalizer(subject: str) -> str:
     return SUBJECT_MAP[sub]
 
 def clean_variable_name(variable: str) -> str:
-    """
-    Si el LLM incluye por error el sufijo del año en el nombre de la variable
-    (ej. 'media_math_pais_2022'), lo elimina para evitar duplicar el año ('_2022_2022').
-    """
+    """Elimina sufijos de año (_2012.._2022) y traduce variables de estrato a su equivalente en df_paises."""
     var_clean = str(variable).strip()
     for y in PISA_YEARS:
         suffix = f"_{y}"
         if var_clean.endswith(suffix):
-            return var_clean[:-len(suffix)]
-    return var_clean
+            var_clean = var_clean[:-len(suffix)]
+            break
+    return STRATUM_TO_COUNTRY_MAP.get(var_clean, var_clean)
 
-def get_available_base_variables() -> list[str]:
-    """Extrae las variables base desde df_estratos excluyendo metadatos y variables One-Hot."""
-    excluded = {"CNT", "pais", "year"} | ENCODED_COLS
-    base_vars = {col for col in df_estratos.columns if col not in excluded}
-    base_vars.update({"media_math_pais", "media_read_pais", "media_scie_pais"})
+def get_available_country_variables() -> list[str]:
+    """Extrae las 39 variables base reales de dataset_pisa_cnt_llm (df_paises) quitando el sufijo _YYYY."""
+    base_vars = set()
+    for col in df_paises.columns:
+        for y in PISA_YEARS:
+            if col.endswith(f"_{y}"):
+                base_vars.add(col[:-5])  # Quita '_2012', '_2015', etc.
+                break
     return sorted(base_vars)
 
 def scale_derived_column(df_new: pd.DataFrame, df_old: pd.DataFrame, derived_col: str, num_col: str, den_col: str) -> None:
@@ -357,7 +366,7 @@ def get_cross_country_stats( variable: str, year: Union[int, str] = 2022, operat
         if str(year).lower().strip() in ("all", "todos", "media", "mean"):
             cols_historicas = [f"{var_base}_{y}" for y in PISA_YEARS if f"{var_base}_{y}" in df_paises.columns]
             if not cols_historicas:
-                vars_disponibles = ", ".join(get_available_base_variables())
+                vars_disponibles = ", ".join(get_available_country_variables())
                 return (
                     f"Error: La variable '{var_base}' no existe en la base de datos.\n"
                     f"Variables disponibles: {vars_disponibles}"
@@ -376,7 +385,7 @@ def get_cross_country_stats( variable: str, year: Union[int, str] = 2022, operat
                 return f"Error: El año '{year}' no es válido. Usa 2012, 2015, 2018, 2022 o 'all'."
             col_objetivo = f"{var_base}_{year_int}"
             if col_objetivo not in df_paises.columns:
-                vars_disponibles = ", ".join(get_available_base_variables())
+                vars_disponibles = ", ".join(get_available_country_variables())
                 return (
                     f"Error: La columna '{col_objetivo}' no existe en la base de datos.\n"
                     f"Variables base disponibles: {vars_disponibles}"
@@ -438,7 +447,7 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
 
         # Validar existencia de columnas
         if filter_col not in df_paises.columns or target_col not in df_paises.columns:
-            vars_disponibles = ", ".join(get_available_base_variables())
+            vars_disponibles = ", ".join(get_available_country_variables())
             return (
                 f"Error: Verifica que ambas variables existan. Recibido: '{f_base}' y '{t_base}'.\n"
                 f"Variables disponibles: {vars_disponibles}"
@@ -538,7 +547,7 @@ def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, 
         col_b = f"{clean_variable_name(variable_b)}_{year_b}"
 
         if col_a not in df_paises.columns or col_b not in df_paises.columns:
-            vars_disponibles = ", ".join(get_available_base_variables())
+            vars_disponibles = ", ".join(get_available_country_variables())
             return (
                 f"Error: Verifica los nombres de las variables. Buscado: '{col_a}' y '{col_b}'.\n"
                 f"Variables base disponibles: {vars_disponibles}"
@@ -594,7 +603,7 @@ def analyze_temporal_trend(CNT: str, variable: str) -> str:
         for y in PISA_YEARS:
             columna = f"{var_base}_{y}"
             if columna not in registro.columns:
-                vars_disponibles = ", ".join(get_available_base_variables())
+                vars_disponibles = ", ".join(get_available_country_variables())
                 return (
                     f"Error: La variable '{var_base}' no existe en la base de datos.\n"
                     f"Variables disponibles: {vars_disponibles}"
@@ -654,7 +663,7 @@ def predict_future_trend(CNT: str, variable: str = "media_math_pais", target_yea
         for y in PISA_YEARS:
             col = f"{var_base}_{y}"
             if col not in registro.columns:
-                vars_disponibles = ", ".join(get_available_base_variables())
+                vars_disponibles = ", ".join(get_available_country_variables())
                 return (
                     f"Error: La variable '{var_base}' no existe.\n"
                     f"Variables disponibles: {vars_disponibles}"
