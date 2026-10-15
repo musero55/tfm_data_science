@@ -503,10 +503,62 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
     except Exception as e:
         return f"Error al ejecutar la estadística cruzada: {str(e)}"
 
+#TODO Revisar esta funcion (Especificar que los años deben coincidir?)
+#TODO Especificar los parámetros de entrada
+@tool
+def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, year_b: int = 2022) -> str:
+    """
+    Calculates the Pearson correlation coefficient between two numeric indicators across OECD countries.
+    Allows both same-year correlations (default, year_a = year_b = 2022) and lagged inter-temporal correlations.
 
-    
+    Parameters:
+    - variable_a: First base variable name without year suffix (e.g., 'gasto_alumno_secundaria_usd_ppp').
+    - variable_b: Second base variable name without year suffix (e.g., 'media_math_pais').
+    - year_a: PISA cycle year for variable_a (2012, 2015, 2018, 2022). Defaults to 2022.
+    - year_b: PISA cycle year for variable_b (2012, 2015, 2018, 2022). Defaults to 2022.
+    """
+    try:
+        if year_a not in PISA_YEARS or year_b not in PISA_YEARS:
+            return f"Error: Los años deben pertenecer a {PISA_YEARS}."
+
+        col_a = f"{clean_variable_name(variable_a)}_{year_a}"
+        col_b = f"{clean_variable_name(variable_b)}_{year_b}"
+
+        if col_a not in df_paises.columns or col_b not in df_paises.columns:
+            vars_disponibles = ", ".join(get_available_base_variables())
+            return (
+                f"Error: Verifica los nombres de las variables. Buscado: '{col_a}' y '{col_b}'.\n"
+                f"Variables base disponibles: {vars_disponibles}"
+            )
+
+        df_valido = df_paises[["CNT", col_a, col_b]].dropna()
+        paises_validos = len(df_valido)
+
+        if paises_validos < 5:
+            return f"Error: Solo hay {paises_validos} países con datos conjuntos; se requieren al menos 5 para una correlación fiable."
+
+        corr = df_valido[col_a].corr(df_valido[col_b])
+
+        fuerza = "fuerte" if abs(corr) >= 0.6 else "moderada" if abs(corr) >= 0.3 else "débil"
+        direccion = "positiva (cuando una aumenta, la otra tiende a aumentar)" if corr > 0 else "negativa (cuando una aumenta, la otra tiende a disminuir)"
+        tipo_corr = (
+            f"contemporánea (edición {year_a})"
+            if year_a == year_b
+            else f"intertemporal con retardo ({year_a} vs {year_b})"
+        )
+
+        return (
+            f"Análisis de Correlación de Pearson ({tipo_corr}):\n"
+            f"- Variables analizadas: '{col_a}' y '{col_b}'\n"
+            f"- Coeficiente de correlación (r): {corr:.3f}\n"
+            f"- Interpretación: Relación lineal {fuerza} y {direccion}.\n"
+            f"- Muestra utilizada: {paises_validos} países de la OCDE con datos válidos en ambas métricas."
+        )
+    except Exception as e:
+        return f"Error al calcular la correlación: {str(e)}"
+        
 # ==============================================================================
-# HERRAMIENTAS DE MODELADO E INFERENCIA (XGBoost Matemáticas)
+# HERRAMIENTAS DE MODELADO E INFERENCIA
 # ==============================================================================
 #
 @tool
@@ -674,39 +726,7 @@ def simulate_scenario(CNT: str, modifications: dict, subject: str = "math") -> s
     except Exception as e:
         return f"Error en la simulación: {str(e)}"
 
-#TODO Revisar esta funcion (Especificar que los años deben coincidir?)
-#TODO Especificar los parámetros de entrada
-@tool
-def calculate_correlation(a_column: str, b_column: str) -> str:
-    """
-    Calculates the Pearson correlation coefficient between two numeric indicators across OECD countries.
-    Both columns must exist in df_paises and include the cycle year suffix (e.g., 'Gasto_Alumno_PPP_2022').
-    """
-    try:
-        if a_column not in df_paises.columns or b_column not in df_paises.columns:
-            return (f"Error: Verifica que ambas columnas existan y tengan el año al final. "
-                    f"Recibido: '{a_column}' y '{b_column}'.")
-        
-        # Eliminar nulos para calcular la correlación de forma segura
-        df_valido = df_paises[[a_column, b_column]].dropna()
-        paises_validos = len(df_valido)
-        
-        if paises_validos < 5:
-            return "Error: No hay suficientes países con datos conjuntos para calcular una correlación fiable."
-        
-        corr = df_valido[a_column].corr(df_valido[b_column])
-        
-        # Interpretación automática para el agente
-        fuerza = "fuerte" if abs(corr) >= 0.6 else "moderada" if abs(corr) >= 0.3 else "débil"
-        direccion = "positiva (si una sube, la otra sube)" if corr > 0 else "negativa (si una sube, la otra baja)"
-        
-        return (
-            f"La correlación entre {a_column} y {b_column} es: {corr:.3f}.\n"
-            f"Interpretación: Existe una relación lineal {fuerza} y {direccion} entre estas variables.\n"
-            f"Muestra utilizada: {paises_validos} países con datos válidos en ambas métricas."
-        )
-    except Exception as e:
-        return f"Error al calcular la correlación: {str(e)}"
+
 
 @tool
 def analyze_temporal_trend(CNT: str, variable: str) -> str:
