@@ -695,8 +695,8 @@ def predict_future_trend(CNT: str, variable: str = "media_math_pais", target_yea
 @tool
 def get_feature_importance(subject:str = 'math') -> str:
     """
-    Retrieves the global feature importance rankings from the trained ML model for a given subject.
-    
+    Retrieves the top 10 global feature importance rankings from the trained XGBoost model for a given subject.
+
     Parameters:
     - subject: Academic subject. Must be one of: 'math' (Mathematics), 'read' (Reading/Literature), 'scie' (Science). Defaults to 'math'.
     """
@@ -709,15 +709,11 @@ def get_feature_importance(subject:str = 'math') -> str:
         
         #Obtenemos las importancias
         importances = modelo.feature_importances_
-
-        #Asignamos las importancias a las columnas 
         pesos = dict(zip(columnas_del_modelo, importances))
 
         #Ordenamos las claves, segun su valor en el diccionario ( nos quedamos con las 10 mas relevantes)
         top_cols = sorted(pesos, key=pesos.get, reverse=True)[:10]
-
         subject_names = {"math": "Matemáticas", "read": "Lectura", "scie": "Ciencias"}
-
         texto = f"Importancia global de variables en el modelo predictivo de {subject_names[sub]}:\n"
 
         #Generamos en un bucle la lista de importancias obtenidas para el modelo 
