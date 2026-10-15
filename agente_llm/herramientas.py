@@ -727,39 +727,39 @@ def get_feature_importance(subject:str = 'math') -> str:
 
 
 @tool
-def predict_and_explain_performance(CNT: str, subject:str ='math') -> str:
+def predict_and_explain_performance(CNT: str, subject: Literal["math", "read", "scie"] = "math", year: int = 2022) -> str:
     """
-    Provides the baseline ML predicted subjet score and SHAP feature attribution for a country's CURRENT, REAL profile.
+    Provides the baseline ML predicted subject score and SHAP feature attribution for a country's profile in a specific PISA cycle.
     Use this tool when the user asks:
-    - Why a country achieves its current score.
-    - Which factors are currently helping or penalizing a country.
+    - Why a country achieves its score according to the ML model.
+    - Which socioeconomic or educational factors are helping (positive SHAP) or penalizing (negative SHAP) a country.
     DO NOT use this tool if the user asks for hypothetical changes, policies, or what-if scenarios.
 
     Parameters:
     - CNT: 3-letter ISO code (e.g., 'ESP', 'FIN', 'MEX').
     - subject: Academic subject. Must be one of: 'math' (Mathematics), 'read' (Reading/Literature), 'scie' (Science). Defaults to 'math'.
-
+    - year: PISA cycle year (2012, 2015, 2018, 2022). Defaults to 2022.
     """
   
     try:
+        if year not in PISA_YEARS:
+            return f"Error: El año '{year}' no es válido. Los ciclos disponibles son: {PISA_YEARS}."
+        
         sub = subject_normalizer(subject)
         codigo_pais = CNT.upper()
-        
         modelo = MODELS.get(sub)
+
         explainer_sub = EXPLAINERS.get(sub)
         if not modelo or not explainer_sub:
             return f"Error: Modelo o explicador SHAP no disponible para la materia '{subject}'."
         
-    
-        # Nos quedamos con las variables del pais especifico 
-        #TODO he metido filtrar por año, pero es lo que quiero ? no lo tengo en variable de entrada
-        df_filtrado = df_estratos[(df_estratos['CNT'] == CNT) & (df_estratos['year'] == 2022)].copy()
+        df_orig = df_estratos[(df_estratos['CNT'] == CNT) & (df_estratos['year'] == 2022)].copy()
         
-        if df_filtrado.empty:
+        if df_orig.empty:
             return f"Error: No encontré datos para el código '{CNT}' en la base estratificada."
 
 
-        df_modelo = df_filtrado[columnas_del_modelo]
+        df_modelo = df_orig[columnas_del_modelo]
 
         # Predicción y SHAP values del modelo
         prediccion_media = modelo.predict(df_modelo).mean()
@@ -781,78 +781,103 @@ def predict_and_explain_performance(CNT: str, subject:str ='math') -> str:
         variables_suman = [f"{col} (+{val:.2f})" for col, val in s_impactos[s_impactos > 0].nlargest(3).items()]
         variables_restan = [f"{col} ({val:.2f})" for col, val in s_impactos[s_impactos < 0].nsmallest(3).items()]
 
+        nombre_asignatura = SUBJECT_NAMES_ES[sub]
+
         return (
-            f"Análisis Predictivo SHAP para {CNT}({sub}):\n"
-            f"- Predicción media del modelo: {prediccion_media:.1f} puntos.\n"
-            f"- Valor base de referencia : {valor_base:.1f} puntos.\n"
-            f"- Top 3 Factores impulsores: {', '.join(variables_suman)}\n"
-            f"- Top 3 Factores penalizadores: {', '.join(variables_restan)}\n"
+            f"Análisis Predictivo y Explicabilidad SHAP para {codigo_pais} en {nombre_asignatura} (PISA {year}):\n"
+            f"- Valor base de referencia (media global del modelo): {valor_base:.2f} puntos.\n"
+            f"- Predicción media del modelo para {codigo_pais}: {prediccion_media:.2f} puntos.\n"
+            f"- Top Factores impulsores (suman puntos): {', '.join(variables_suman) if variables_suman else 'Ninguno significativo'}\n"
+            f"- Top Factores penalizadores (restan puntos): {', '.join(variables_restan) if variables_restan else 'Ninguno significativo'}\n"
         )
     except Exception as e:
-        return f"Error al ejecutar el explicador: {str(e)}"
-
-
-#TODO Cuando tenga los modelos para el ressto de asignaturas modificar el prompt y el código 
-@tool
-def simulate_scenario(CNT: str, modifications: dict, subject: str = "math") -> str:
-    """
-    Simulates a WHAT-IF scenario by altering specific variables for a country and estimating the impact on the selected subject.
+        return f"Error al ejecutar el explicador SHAP: {str(e)}"
     
-    Parameters:
-    - CNT: 3-letter ISO code (e.g., 'ESP', 'FIN').
-    - modifications: Dictionary mapping exact feature names to their new hypothetical values.
-      Example: {"Gasto_Alumno_PPP": 100000, "tiempo_deberes_totales_diarios": 2.0}
-    - subject: Academic subject. Must be one of: 'math' (Mathematics), 'read' (Reading/Literature), 'scie' (Science). Defaults to 'math'.
+@tool
+def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "read", "scie"] = "math", year: int = 2022) -> str:
+    """
+    Simulates a WHAT-IF policy scenario by altering specific variables for a country and estimating the net impact
+    on the predicted score using the trained XGBoost model. Automatically recalculates derived ratios and composite features.
 
+    Parameters:
+    - CNT: 3-letter ISO code (e.g., 'ESP', 'FIN', 'MEX').
+    - modifications: Dictionary mapping exact feature names (without year suffix) to their new hypothetical target values.
+      Example: {"gasto_alumno_secundaria_usd_ppp": 14000, "tiempo_deberes_totales_diarios": 1.5}
+    - subject: Academic subject. Must be one of: 'math' (Mathematics), 'read' (Reading/Literature), 'scie' (Science). Defaults to 'math'.
+    - year: Baseline PISA cycle year to run the simulation on (2012, 2015, 2018, 2022). Defaults to 2022.
     """
     try:
+        if year not in PISA_YEARS:
+            return f"Error: El año '{year}' no es válido. Usa uno de: {PISA_YEARS}."
+        
         sub = subject_normalizer(subject)
         codigo_pais = CNT.upper()
         modelo = MODELS.get(sub)
         if not modelo:
             return f"Error: El modelo para '{subject}' no está disponible."
         
-        df_filtrado = df_estratos[(df_estratos['CNT'] == codigo_pais) & (df_estratos['year'] == 2022)].copy()
-        if df_filtrado.empty:
-            return f"Error: No se encontró el país '{codigo_pais}' en la base de 2022."
+        df_orig = df_estratos[(df_estratos['CNT'] == codigo_pais) & (df_estratos['year'] == year)].copy()
+        if df_orig.empty:
+            return f"Error: No se encontró el país '{codigo_pais}' en la base del año {year}."
 
-        #Calculamos la nota original con los datos sin cambiar
-        nota_original = modelo.predict(df_filtrado[columnas_del_modelo]).mean()
+        df_mod = df_orig.copy() #Copia local
+
+        #Nota original antes de realizar modificaciones
+        nota_original = modelo.predict(df_orig[columnas_del_modelo]).mean()
 
         #Aplicamos los cambios indicados en modifications
         cambios_texto = []
-        for col, nuevo_valor in modifications.items():
-            if col in df_filtrado.columns:
-                valor_antiguo = df_filtrado[col].mean() #Guardamos el valor antifuo
-                df_filtrado[col] = nuevo_valor
-                if isinstance(valor_antiguo, (int, float)):
-                    cambios_texto.append(f"- {col}: pasó de {valor_antiguo:.2f} a {nuevo_valor}") #Generamos el prompt del cambio
-                else:
-                    cambios_texto.append(f"- {col}: pasó de '{valor_antiguo}' a '{nuevo_valor}'")
-            else:
-                return f"Error: La variable '{col}' no existe en la base del modelo. Revisa el nombre exacto."
+        columnas_modificadas = set()
 
-        #Simulamos la nueva nota en funcion de los datos nuevos introducidos
-        nota_simulada = modelo.predict(df_filtrado[columnas_del_modelo]).mean()
+        for raw_col, nuevo_valor in modifications.items():
+            col= clean_variable_name(raw_col)
+            if col not in df_mod.columns or col not in columnas_del_modelo:
+                            cols_validas = ", ".join([c for c in columnas_del_modelo if c != "year"])
+                            return (
+                                f"Error: La variable '{raw_col}' no existe entre las variables del modelo.\n"
+                                f"Variables modificables disponibles: {cols_validas}"
+                            )
+            valor_antiguo_medio = float(df_mod[raw_col].mean()) #Guardamos el valor antifuo
+            nuevo_val_float = float(nuevo_valor)
+
+            #Calculo de la diferencia de valor para preservar la varianza
+            delta = nuevo_val_float - valor_antiguo_medio
+            df_mod[col] = df_mod[col] + delta #Modificamos el valor de la columna por su variación, en vez de sustituir directamente el valor
+
+            columnas_modificadas.add(col)
+            cambios_texto.append(
+                f"- {col}: pasó de {valor_antiguo_medio:.2f} a {nuevo_val_float:.2f} ({'+' if delta >= 0 else ''}{delta:.2f})"
+            )
+
+        #Recalculamos las variables compuestas e indices derivados a partir de lso cambios introducidos
+        derivadas_actualizadas = recalculate_derived_features(df_orig, df_mod, columnas_modificadas)
+        texto_derivadas = ""
+        if derivadas_actualizadas:
+            lineas_derivadas = []
+            for d_col in derivadas_actualizadas:
+                ant_d = float(df_orig[d_col].mean())
+                nue_d = float(df_mod[d_col].mean())
+                lineas_derivadas.append(f"  * {d_col}: ajustado automáticamente de {ant_d:.4f} a {nue_d:.4f}")
+            texto_derivadas = "\nVariables derivadas recalculadas automáticamente:\n" + "\n".join(lineas_derivadas) + "\n"
+
+        #Prediccion del escenario
+        nota_simulada = float(modelo.predict(df_mod[columnas_del_modelo]).mean())
         diferencia = nota_simulada - nota_original
         signo = "+" if diferencia > 0 else ""
-
-        #Traducimos al español 
-        subject_names = {"math": "Matemáticas", "read": "Lectura", "scie": "Ciencias"}
-        nombre_sub = subject_names.get(sub, sub)
+        nombre_sub = SUBJECT_NAMES_ES[sub]
 
         return (
-            f"Simulación de escenario para {codigo_pais} ({nombre_sub}):\n\n"
-            f"Modificaciones aplicadas:\n" + "\n".join(cambios_texto) + "\n\n"
-            f"Resultados del modelo:\n"
-            f"- Nota original estimada: {nota_original:.2f} puntos.\n"
-            f"- Nota simulada estimada: {nota_simulada:.2f} puntos.\n"
-            f"- Impacto neto provocado por el cambio: {signo}{diferencia:.2f} puntos."
+            f"Simulación de escenario What-If para {codigo_pais} en {nombre_sub} (Base PISA {year}):\n\n"
+            f"Modificaciones directas aplicadas:\n" + "\n".join(cambios_texto) + "\n"
+            f"{texto_derivadas}\n"
+            f"Resultados de la inferencia del modelo XGBoost:\n"
+            f"- Puntuación original estimada: {nota_original:.2f} puntos.\n"
+            f"- Puntuación simulada estimada: {nota_simulada:.2f} puntos.\n"
+            f"- Impacto neto estimado: {signo}{diferencia:.2f} puntos."
         )
-        
-    except Exception as e:
-        return f"Error en la simulación: {str(e)}"
 
+    except Exception as e:
+        return f"Error en la simulación de escenario: {str(e)}"
 
 #TODO Faltan las predicciones a futuro, pensar como se haría
 
