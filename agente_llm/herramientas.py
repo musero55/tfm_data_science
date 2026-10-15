@@ -297,52 +297,55 @@ GUARDRAILS & SCOPE (Strict):
 # ==============================================================================
 
 @tool
-def get_country_data(CNT: str, year: int = 2022) -> str:
+def get_country_data(CNT: str, year: Union[int,str] = 'all') -> str:
     """
-        Retrieve historical PISA educational and socioeconomic indicators for a specific country and edition.
-        
-        Parameters:
-        - CNT: 3-letter ISO country code (e.g., 'ESP', 'MEX', 'FIN').
-        - year: PISA cycle year (must be one of: 2012, 2015, 2018, 2022).
-        """
+    Retrieve historical PISA educational and socioeconomic indicators for a specific country.
+    By default (year='all'), returns the complete evolution across all 4 cycles (2012, 2015, 2018, 2022) in a single call.
+    
+    Parameters:
+    - CNT: 3-letter ISO country code (e.g., 'ESP', 'MEX', 'FIN').
+    - year: 'all' (recommended, returns 2012-2022 table) or a specific year (2012, 2015, 2018, 2022).
+    """
     try:
-        if year not in PISA_YEARS:
-            return f"Error: El año '{year}' no es válido. Los ciclos disponibles son: {PISA_YEARS}."
-        
         codigo_pais = CNT.upper().strip()
         registro = df_paises[df_paises['CNT'] == codigo_pais]
-        
         if registro.empty:
             return f"No se han encontrado registros para {codigo_pais}."
-            
-        # Cogemos la unica fila y se conviete a una serie de pandas (El dato no se devuelve con el numero de fila)
-        fila = registro.iloc[0]
-
-        #Formatea la salida para tener 2 decimales y la unidad correspondiente de la variable
-        def fmt(col_base: str, suffix: str = "") -> str:
-            val = fila.get(f"{col_base}_{year}", np.nan)
-            if pd.isna(val):
-                return "No disponible"
-            if isinstance(val, (int, float, np.number)):
-                return f"{val:.2f}{suffix}"
-            return f"{val}{suffix}"
         
-        return (
-                f"Resultados e indicadores de {codigo_pais} en PISA {year}:\n"
-                f"- Puntuación media Matemáticas: {fmt('media_math_pais', ' pts')}\n"
-                f"- Puntuación media Lectura: {fmt('media_read_pais', ' pts')}\n"
-                f"- Puntuación media Ciencias: {fmt('media_scie_pais', ' pts')}\n"
-                f"- Gasto por alumno en Secundaria (USD PPP): {fmt('gasto_alumno_secundaria_usd_ppp', ' USD PPP')}\n"
-                f"- Gasto por alumno en Primaria (USD PPP): {fmt('gasto_alumno_primaria_usd_ppp', ' USD PPP')}\n"
-                f"- Gasto público educativo (% del PIB): {fmt('gasto_publico_total_pct_pib', '%')}\n"
-                f"- Salario docente (15 años exp, USD PPP): {fmt('salario_legal_docente_15_años_experiencia_usd_ppp', ' USD PPP')}\n"
-                f"- Ratio alumnos por docente (Secundaria): {fmt('alumnos_por_docente_secundaria_primera_etapa')}\n"
-                f"- Tiempo de deberes diarios: {fmt('tiempo_deberes_totales_diarios', ' h')}\n"
-                f"- Dispone de personal de apoyo: {fmt('dispone_personal_apoyo')}\n"
-                f"- Índice socioeconómico medio (ESCS): {fmt('escs_media_pais')}\n"
-                f"- PIB per cápita (USD PPP): {fmt('pib_per_capita_usd_ppp', ' USD PPP')}\n"
-                f"- Índice de Gini: {fmt('gini')}"
-                )
+        fila = registro.iloc[0]
+        years_to_show = PISA_YEARS if str(year).lower().strip() in ("all", "todos") else [int(year)]
+        for y in years_to_show:
+            if y not in PISA_YEARS:
+                return f"Error: El año '{y}' no es válido. Usa {PISA_YEARS} o 'all'."
+
+        indicadores_clave = [
+            ("media_math_pais", "Media Matemáticas (pts)"),
+            ("media_read_pais", "Media Lectura (pts)"),
+            ("media_scie_pais", "Media Ciencias (pts)"),
+            ("escs_media_pais", "Índice socioeconómico medio (ESCS)"),
+            ("gasto_alumno_secundaria_usd_ppp", "Gasto alumno Secundaria (USD PPP)"),
+            ("gasto_acumulado_alumno_6_a_15_años_usd_ppp", "Gasto acumulado 6-15 años (USD PPP)"),
+            ("gasto_publico_total_pct_pib", "Gasto público educativo (% PIB)"),
+            ("pct_gasto_secundaria_en_personal", "% Gasto Secundaria en personal"),
+            ("pct_gasto_secundaria_en_docentes", "% Gasto Secundaria en docentes"),
+            ("salario_legal_docente_15_años_experiencia_usd_ppp", "Salario docente 15 años exp (USD PPP)"),
+            ("alumnos_por_docente_secundaria_primera_etapa", "Ratio alumnos/docente Secundaria"),
+            ("tiempo_deberes_totales_diarios", "Tiempo deberes diarios (h)"),
+            ("dispone_personal_apoyo", "Dispone personal de apoyo"),
+            ("pib_per_capita_usd_ppp", "PIB per cápita (USD PPP)"),
+            ("gini", "Índice de Gini"),
+        ]
+
+        encabezado = f"Indicadores de {codigo_pais} ({', '.join(map(str, years_to_show))}):\n"
+        lineas = []
+        for col_base, etiqueta in indicadores_clave:
+            vals = []
+            for y in years_to_show: #Muestra la salida con todos los datos de cada año ( si se indica 'all')
+                v = fila.get(f"{col_base}_{y}", np.nan) #Cofe el valor de la columna para el año de df_paises
+                vals.append(f"{y}: {v:.2f}" if pd.notna(v) and isinstance(v, (int, float, np.number)) else f"{y}: N/D")
+            lineas.append(f"- {etiqueta}: " + " | ".join(vals))
+
+        return encabezado + "\n".join(lineas) #Devuelve los datos indicando el año
     except Exception as e:
         return f"Error al recuperar datos históricos: {str(e)}"
 
