@@ -278,7 +278,7 @@ GUARDRAILS & SCOPE (Strict):
 """
 
 # ==============================================================================
-# HERRAMIENTAS DE CONSULTA
+# HERRAMIENTAS DE CONSULTA y ESTADISTICA
 # ==============================================================================
 
 @tool
@@ -503,8 +503,6 @@ metric: Literal["mean", "median", "count"] = "mean") -> str:
     except Exception as e:
         return f"Error al ejecutar la estadística cruzada: {str(e)}"
 
-#TODO Revisar esta funcion (Especificar que los años deben coincidir?)
-#TODO Especificar los parámetros de entrada
 @tool
 def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, year_b: int = 2022) -> str:
     """
@@ -556,7 +554,60 @@ def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, 
         )
     except Exception as e:
         return f"Error al calcular la correlación: {str(e)}"
-        
+
+@tool
+def analyze_temporal_trend(CNT: str, variable: str) -> str:
+    """
+    Extracts the historical evolution across all PISA cycles (2012, 2015, 2018, 2022) for a specific country.
+
+    Parameters:
+    - CNT: 3-letter ISO country code (e.g., 'ESP', 'MEX', 'FIN').
+    - variable: Base metric name without the year suffix (e.g., 'media_math_pais', 'gasto_alumno_secundaria_usd_ppp', 'escs_media_pais').
+
+    """
+    try:
+        codigo_pais = CNT.upper().strip()
+        var_base = clean_variable_name(variable)
+        registro = df_paises[df_paises["CNT"] == codigo_pais]
+
+        if registro.empty:
+            return f"Error: No se encontraron registros para el código de país '{codigo_pais}'."
+
+        lineas = []
+        valores_validos = []
+
+        for y in PISA_YEARS:
+            columna = f"{var_base}_{y}"
+            if columna not in registro.columns:
+                vars_disponibles = ", ".join(get_available_base_variables())
+                return (
+                    f"Error: La variable '{var_base}' no existe en la base de datos.\n"
+                    f"Variables disponibles: {vars_disponibles}"
+                )
+            val = registro.iloc[0][columna]
+            if pd.notna(val):
+                val_str = f"{val:.2f}" if isinstance(val, (int, float, np.number)) else str(val)
+                lineas.append(f"- Edición {y}: {val_str}")
+                if isinstance(val, (int, float, np.number)):
+                    valores_validos.append((y, float(val)))
+            else:
+                lineas.append(f"- Edición {y}: Dato no disponible")
+
+        resumen_cambio = ""
+        if len(valores_validos) >= 2:
+            y_ini, v_ini = valores_validos[0]
+            y_fin, v_fin = valores_validos[-1]
+            diff_neta = v_fin - v_ini
+            signo = "+" if diff_neta > 0 else ""
+            resumen_cambio = f"\nVariación neta observada ({y_ini}-{y_fin}): {signo}{diff_neta:.2f}"
+
+        return (
+            f"Evolución histórica de '{var_base}' para {codigo_pais} (2012-2022):\n"
+            + "\n".join(lineas)
+            + resumen_cambio
+        )
+    except Exception as e:
+        return f"Error al consultar la tendencia temporal: {str(e)}"    
 # ==============================================================================
 # HERRAMIENTAS DE MODELADO E INFERENCIA
 # ==============================================================================
@@ -726,47 +777,6 @@ def simulate_scenario(CNT: str, modifications: dict, subject: str = "math") -> s
     except Exception as e:
         return f"Error en la simulación: {str(e)}"
 
-
-
-@tool
-def analyze_temporal_trend(CNT: str, variable: str) -> str:
-    """
-    Extracts the historical evolution across all PISA cycles (2012, 2015, 2018, 2022) for a specific country.
-    
-    Parameters:
-    - CNT: 3-letter ISO country code (e.g., 'ESP', 'MEX').
-    - variable: Root metric name without the year suffix. Examples:
-      'media_math_pais', 'media_read_pais', 'media_scie_pais', 
-      'Gasto_Alumno_PPP', 'tiempo_deberes_totales_diarios', 'ESCS_media_pais_anual'.
-    """
-    try:
-        codigo_pais = CNT.upper()
-        registro = df_paises[df_paises['CNT'] == codigo_pais]
-        
-        if registro.empty:
-            return f"Error: No se encontraron registros para el código de país '{codigo_pais}'."
-        
-        pisa_years = ['2012', '2015', '2018', '2022']
-        lineas = []
-        
-        for year in pisa_years:
-            columna = f"{variable}_{year}"
-            if columna in registro.columns:
-                val = registro.iloc[0][columna]
-                if pd.notna(val):
-                    val_str = f"{val:.2f}" if isinstance(val, (int, float)) else str(val)
-                    lineas.append(f"- Edición {year}: {val_str}")
-                else:
-                    lineas.append(f"- Edición {year}: Dato no disponible")
-            else:
-                lineas.append(f"- Edición {year}: Métrica no registrada")
-                
-        return (
-            f"Evolución histórica de '{variable}' para {codigo_pais} (2012-2022):\n" +
-            "\n".join(lineas)
-        )
-    except Exception as e:
-        return f"Error al consultar la tendencia temporal: {str(e)}"
 
 #TODO Faltan las predicciones a futuro, pensar como se haría
 
