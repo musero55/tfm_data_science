@@ -13,6 +13,7 @@ from langchain.tools import tool
 import gradio as gr
 from adjustText import adjust_text
 import urllib.parse
+import difflib
 
 import time
 from typing import Literal, Union
@@ -92,12 +93,74 @@ ENCODED_COLS = {
 }
 
 #Mapeo de algunas variables de estrato con su correspondencia a nivel de pais
-STRATUM_TO_COUNTRY_MAP = {
-    "escs_estrato": "escs_media_pais",
-    "brecha_escs_local": "escs_media_pais", #Cual es su correspondencia por año ?
-    "brecha_deberes_local": "tiempo_deberes_totales_diarios", #Cual es su correspondencia por año ?
-    #"Presion_Academica_Neta": "tiempo_deberes_totales_diarios", #TODO Consultar con Alberto
+
+MODEL_LOCAL_TO_COUNTRY_PROXY = {
+    "escs_estrato": (
+        "escs_media_pais",
+        "Nota: 'escs_estrato' mide el nivel socioeconómico de cada estrato; a escala nacional se analiza mediante su media agregada 'escs_media_pais'."
+    ),
+    "brecha_escs_local": (
+        "escs_media_pais",
+        "Nota metodológica: 'brecha_escs_local' (escs_estrato - escs_media_pais) mide la desigualdad intra-país entre estratos y su media nacional es 0. A nivel país se evalúa a través de 'escs_media_pais' (o 'gini')."
+    ),
+    "brecha_deberes_local": (
+        "tiempo_deberes_totales_diarios",
+        "Nota metodológica: 'brecha_deberes_local' mide la desviación local del estrato respecto a la media del país (su promedio nacional es 0). A nivel país se analiza mediante 'tiempo_deberes_totales_diarios'."
+    ),
+    "Presion_Academica_Neta": (
+        "tiempo_deberes_totales_diarios",
+        "Nota metodológica: 'Presion_Academica_Neta' es un indicador compuesto de estrato (deberes / (1 + apoyo)). A nivel país se analiza su componente principal 'tiempo_deberes_totales_diarios'."
+    ),
+    "media_math_estrato": ("media_math_pais", None),
+    "media_read_estrato": ("media_read_pais", None),
+    "media_scie_estrato": ("media_scie_pais", None),
 }
+
+
+
+def get_available_country_variables() -> list[str]:
+    """Extrae las variables base reales de df_paises quitando el sufijo del año."""
+    return sorted({
+        col[:-5] for col in df_paises.columns 
+        if any(col.endswith(f"_{y}") for y in PISA_YEARS)
+    })
+
+def clean_variable_name(variable: str) -> str:
+    """Limpia sufijos de año y corrige nombres parecidos automáticamente."""
+    var_clean = str(variable).strip()
+    for y in PISA_YEARS:
+        if var_clean.endswith(f"_{y}"):
+            var_clean = var_clean[:-5]
+            break
+
+    valid_vars = get_available_country_variables()
+    if var_clean in valid_vars or var_clean in df_estratos.columns:
+        return var_clean
+
+    matches = difflib.get_close_matches(var_clean, valid_vars, n=1, cutoff=0.6)
+    return matches[0] if matches else var_clean
+
+def resolve_country_variable(variable: str) -> tuple[str, str]:
+    """
+    Limpia el sufijo de año y, si el LLM pasa una variable de estrato a una herramienta de país,
+    devuelve (variable_pais_valida, nota_metodologica) para responder en 1 solo paso sin fallar.
+    """
+    var_clean = clean_variable_name(variable)
+
+    #Comprobamos si es una variable de estrato con correspondencia a pais
+    if var_clean in MODEL_LOCAL_TO_COUNTRY_PROXY:
+        target_var, nota = MODEL_LOCAL_TO_COUNTRY_PROXY[var_clean]
+        return target_var, (f"{nota}\n" if nota else "")
+
+    #Si no es una variable con correspondencia, comprobamos si es valida y la devolvemos
+    valid_vars = get_available_country_variables()
+    if var_clean in valid_vars:
+        return var_clean, ""
+
+    #Si no es valida y no tiene correspondencia a pais buscamos el nombre mas parecido 
+    matches = difflib.get_close_matches(var_clean, valid_vars, n=1, cutoff=0.6)
+    return (matches[0] if matches else var_clean), ""
+
 
 def subject_normalizer(subject: str) -> str:
     """Normaliza el nombre de la asignatura a 'math', 'read' o 'scie'."""
@@ -107,26 +170,6 @@ def subject_normalizer(subject: str) -> str:
             f"Asignatura '{subject}' no válida. Usa: 'math', 'read' o 'scie'."
         )
     return SUBJECT_MAP[sub]
-
-def clean_variable_name(variable: str) -> str:
-    """Elimina sufijos de año (_2012.._2022) y traduce variables de estrato a su equivalente en df_paises."""
-    var_clean = str(variable).strip()
-    for y in PISA_YEARS:
-        suffix = f"_{y}"
-        if var_clean.endswith(suffix):
-            var_clean = var_clean[:-len(suffix)]
-            break
-    return STRATUM_TO_COUNTRY_MAP.get(var_clean, var_clean)
-
-def get_available_country_variables() -> list[str]:
-    """Extrae las 39 variables base reales de dataset_pisa_cnt_llm (df_paises) quitando el sufijo _YYYY."""
-    base_vars = set()
-    for col in df_paises.columns:
-        for y in PISA_YEARS:
-            if col.endswith(f"_{y}"):
-                base_vars.add(col[:-5])  # Quita '_2012', '_2015', etc.
-                break
-    return sorted(base_vars)
 
 def scale_derived_column(df_new: pd.DataFrame, df_old: pd.DataFrame, derived_col: str, num_col: str, den_col: str) -> None:
     """
@@ -244,53 +287,6 @@ def recalculate_derived_features(df_orig: pd.DataFrame, df_mod: pd.DataFrame, mo
 
     return recalculadas
 
-SYSTEM_PROMPT = """
-You are an elite research assistant specializing in educational and socioeconomic data analysis for the PISA project and its associated Machine Learning models.
-
-LANGUAGE REQUIREMENT (Strict):
-- You must ALWAYS answer and interact with the user in Spanish, using formal, precise academic language.
-- All final reports, explanations, and conclusions must be written entirely in Spanish.
-
-CORE RESPONSIBILITIES:
-- Analyze educational performance, socioeconomic factors, and ML model inferences.
-- Accurately invoke available tools when historical data, cross-country rankings, correlations, future projections, simulations, or SHAP explanations are needed.
-
-MACHINE LEARNING DOMAIN SPECIFICATIONS:
-- You have access to predictive XGBoost models and SHAP explainability for 3 distinct subjects:
-  1. 'math' -> Mathematics (default if unspecified).
-  2. 'read' -> Reading and Literacy.
-  3. 'scie' -> Scientific Literacy.
-- When calling 'get_feature_importance', 'predict_and_explain_performance', or 'simulate_scenario', inspect the user's intent to set the 'subject' parameter accordingly.
-
-AVAILABLE BASE VARIABLES (use without year suffix in tool parameters):
-- Target scores (only in country dataset):
-  'media_math_pais', 'media_read_pais', 'media_scie_pais'
-- Socioeconomic & School Context:
-  'tiempo_deberes_totales_diarios', 'dispone_personal_apoyo', 'escs_media_pais', 'escs_estrato',
-  'Presion_Academica_Neta', 'brecha_escs_local', 'brecha_deberes_local', 'gini', 'pib_per_capita_usd_ppp'
-- Expenditure & Educational Resources:
-  'gasto_alumno_preprimaria_usd_ppp', 'gasto_alumno_primaria_usd_ppp', 'gasto_alumno_secundaria_usd_ppp',
-  'gasto_alumno_secundaria_servicios_auxiliares_usd_ppp', 'gasto_pct_pib_primaria_a_postsecundaria',
-  'pct_gasto_publico_en_primaria_a_postsecundaria', 'gasto_publico_total_pct_pib',
-  'financiacion_privada_pct_gasto_secundaria', 'financiacion_exterior_pct_gasto_secundaria',
-  'salario_legal_docente_15_años_experiencia_usd_ppp', 'alumnos_por_docente_secundaria_primera_etapa',
-  'pct_gasto_secundaria_en_personal', 'pct_gasto_secundaria_en_capital',
-  'servicios_auxiliares_pct_gasto_alumno_secundaria', 'gasto_alumno_secundaria_pct_pib_per_capita',
-  'salario_legal_docente_15_años_experiencia_pct_pib_per_capita', 'coste_docente_por_alumno_usd_ppp',
-  'coste_docente_por_alumno_pct_gasto_alumno_secundaria', 'ratio_gasto_preprimaria_sobre_secundaria'
-
-TEMPORAL CONSTRAINTS:
-- Historical database cycles: 2012, 2015, 2018, and 2022. All countries belong to the OECD.
-- If the user does not specify a year for a query, default to 2022.
-- For country trends across 2012-2022, use 'analyze_temporal_trend'.
-- For future projections (e.g., PISA 2025), use 'predict_future_trend'.
-- Always convert country names to their 3-letter ISO code (e.g., Spain -> 'ESP', Mexico -> 'MEX', Finland -> 'FIN').
-
-GUARDRAILS & SCOPE (Strict):
-- Only respond to queries directly related to the PISA study, educational policy, student socioeconomic context, or the project's ML models.
-- If the user asks about unrelated topics (recipes, unrelated programming, sports, etc.), politely decline in Spanish:
-  "Lo siento, únicamente estoy capacitado para responder consultas relacionadas con el estudio PISA y factores socioeducativos relativos a este proyecto."
-"""
 
 # ==============================================================================
 # HERRAMIENTAS DE CONSULTA y ESTADISTICA
@@ -545,9 +541,12 @@ def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, 
     try:
         if year_a not in PISA_YEARS or year_b not in PISA_YEARS:
             return f"Error: Los años deben pertenecer a {PISA_YEARS}."
-
-        col_a = f"{clean_variable_name(variable_a)}_{year_a}"
-        col_b = f"{clean_variable_name(variable_b)}_{year_b}"
+        
+        var_a, nota_a = resolve_country_variable(variable_a)
+        var_b, nota_b = resolve_country_variable(variable_b)
+        col_a = f"{var_a}_{year_a}"
+        col_b = f"{var_b}_{year_b}"
+        notas_metodologicas = f"{nota_a}{nota_b}"
 
         if col_a not in df_paises.columns or col_b not in df_paises.columns:
             vars_disponibles = ", ".join(get_available_country_variables())
@@ -573,6 +572,7 @@ def calculate_correlation(variable_a: str, variable_b: str, year_a: int = 2022, 
         )
 
         return (
+            f"{notas_metodologicas}\n"
             f"Análisis de Correlación de Pearson ({tipo_corr}):\n"
             f"- Variables analizadas: '{col_a}' y '{col_b}'\n"
             f"- Coeficiente de correlación (r): {corr:.3f}\n"
@@ -594,7 +594,7 @@ def analyze_temporal_trend(CNT: str, variable: str) -> str:
     """
     try:
         codigo_pais = CNT.upper().strip()
-        var_base = clean_variable_name(variable)
+        var_base, nota_proxy = resolve_country_variable(variable)
         registro = df_paises[df_paises["CNT"] == codigo_pais]
 
         if registro.empty:
@@ -629,6 +629,7 @@ def analyze_temporal_trend(CNT: str, variable: str) -> str:
             resumen_cambio = f"\nVariación neta observada ({y_ini}-{y_fin}): {signo}{diff_neta:.2f}"
 
         return (
+            f"{nota_proxy}\n"
             f"Evolución histórica de '{var_base}' para {codigo_pais} (2012-2022):\n"
             + "\n".join(lineas)
             + resumen_cambio
@@ -746,6 +747,15 @@ def get_feature_importance(subject:str = 'math') -> str:
         top_cols = sorted(pesos, key=pesos.get, reverse=True)[:10]
         subject_names = {"math": "Matemáticas", "read": "Lectura", "scie": "Ciencias"}
         texto = f"Importancia global de variables en el modelo predictivo de {subject_names[sub]}:\n"
+
+        VARS_SOLO_ESTRATO = {"escs_estrato", "brecha_escs_local", "brecha_deberes_local", "Presion_Academica_Neta"}
+        encontradas_estrato = [c for c in top_cols if c in VARS_SOLO_ESTRATO]
+        if encontradas_estrato:
+            texto += (
+                f"\nNota metodológica: {', '.join(encontradas_estrato)} son variables locales a nivel de estrato "
+                f"(df_estratos). Para analizar su contexto a nivel país en otras herramientas, utiliza sus variables "
+                f"nacionales matriz: 'escs_media_pais', 'tiempo_deberes_totales_diarios' o 'dispone_personal_apoyo'."
+    )
 
         #Generamos en un bucle la lista de importancias obtenidas para el modelo 
         for i, col in enumerate(top_cols, 1):
@@ -907,96 +917,6 @@ def simulate_scenario(CNT: str, modifications: dict, subject: Literal["math", "r
 
     except Exception as e:
         return f"Error en la simulación de escenario: {str(e)}"
-
-
-# ==============================================================================
-# HERRAMIENTAS DE VISUALIZACION
-# ==============================================================================
-
-# @tool
-# def generate_pisa_plot(codigo_plot: str) -> str:
-#     """
-#     Genera y guarda una visualización estadística o gráfica explicativa de Machine Learning (SHAP).
-#     El LLM debe elegir de forma autónoma el mejor gráfico según la consulta.
-
-#     Entorno predefinido disponible dentro del código:
-#     - 'df_pisa_cnt': DataFrame agregado. IMPORTANTE: La columna de países se llama 'CNT'.
-#     - 'df_pisa_strat': DataFrame estratificado. IMPORTANTE: La columna de países se llama 'CNT'.
-#     - 'columnas_esperadas': Lista con los nombres de las features de entrada del modelo.
-#     - 'explainer': Objeto TreeExplainer de SHAP del modelo XGBoost.
-#     - 'shap', 'plt', 'sns', 'pd', 'np': Librerías importadas listas para usar.
-#     - 'adjust_text': Función de ajuste de etiquetas de texto (si está disponible, úsala para evitar solapamientos).
-
-#     REGLAS ESTRICTAS PARA 'codigo_plot':
-#     1. Debe ser código Python ejecutable que construya la figura.
-#     2. Si usas funciones de 'shap.plots.*', incluye SIEMPRE el argumento 'show=False'.
-#     3. NO uses plt.show().
-#     4. NO uses plt.savefig() (el guardado se gestiona internamente).
-
-#     BUENAS PRÁCTICAS DE DISEÑO Y COMPOSICIÓN:
-#     - Márgenes dinámicos: Si colocas textos o etiquetas sobre puntos/barras, añade margen con 
-#       plt.margins(x=0.15, y=0.15) para evitar que los textos se corten en los bordes.
-#     - Etiquetas en puntos (scatter plots):
-#       * No etiquetes todos los países si son muchos; selecciona el Top/Bottom o el país de interés.
-#       * Si 'adjust_text' no es None, úsalo: 
-#         texts = [plt.text(x, y, label) for x, y, label in zip(xs, ys, labels)]
-#         adjust_text(texts, arrowprops=dict(arrowstyle="->", color='gray', lw=0.5))
-#     - Eje X saturado: Si hay muchos países o categorías en el eje X, rota siempre las etiquetas:
-#       plt.xticks(rotation=45, ha='right').
-#     - Leyendas: Si la leyenda tapa datos, colócala fuera del gráfico:
-#       plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left').
-#     - Títulos y ejes: Incluye siempre plt.title(), plt.xlabel() y plt.ylabel() legibles.
-#     """
-#     try:
-#         plt.clf()  # Limpieza del lienzo
-#         sns.set_theme(style="whitegrid")  # Estilo limpio y consistente
-#         plt.figure(figsize=(10, 5.5))
-
-#         scope_local = {
-#             "columnas_esperadas": columnas_esperadas,
-#             "df_pisa_cnt": df_pisa_cnt,
-#             "df_pisa_strat": df_pisa_strat,
-#             "explainer": explainer,
-#             "shap": shap,
-#             "plt": plt,
-#             "sns": sns,
-#             "np": np,
-#             "pd": pd,
-#             "adjust_text": adjust_text
-#         }
-
-#         # Ejecución controlada del código generado por el LLM
-#         exec(codigo_plot, {}, scope_local)
-
-#         # Nombre único de archivo en disco
-#         nombre_archivo = f"plot_{time.time_ns()}.png"
-#         ruta_absoluta = DIR_IMAGENES / nombre_archivo
-        
-#         # Guardado asegurando que ningún elemento quede fuera del encuadre
-#         plt.savefig(ruta_absoluta, dpi=180, bbox_inches='tight')
-#         plt.close('all')
-
-        
-#         ruta_posix = ruta_absoluta.resolve().as_posix()
-
-#         # 3. Codificar ÚNICAMENTE los espacios en blanco a '%20' para no alterar los dos puntos de 'C:'
-#         ruta_url = ruta_posix.replace(" ", "%20")
-
-#         # 4. En Windows, Gradio requiere una barra extra delante de la unidad (ej. /file=/C:/Users/...)
-#         markdown_imagen = f"\n\n![Gráfico PISA](/gradio_api/file={ruta_posix})\n\n"
-
-
-#         return (
-#                     f"IMAGEN GUARDADA EXITOSAMENTE EN DISCO.\n"
-#                     f"NO EJECUTES MÁS CÓDIGO NI LLAMES A NINGUNA HERRAMIENTA.\n"
-#                     f"Muestra este Markdown al usuario tal cual en tu respuesta final:\n"
-#                     f"{markdown_imagen}"
-#                 )
-
-#     except Exception as e:
-#         plt.close('all')
-#         return f"Error de Python al ejecutar tu código: {str(e)}. Corrige tu código e inténtalo de nuevo."
-    
 
 # ==============================================================================
 # LISTA DE HERRAMIENTAS EXPORTADAS
