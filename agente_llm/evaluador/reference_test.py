@@ -99,6 +99,52 @@ CASOS_TEST_PISA = [
     }
 ]
 
+## ==================================================Relativo al NOTEBOOK 01_EDA_equidad=================================================== ##
+caso_equidad_espana_2022 = {
+    "id": "CS_Equidad_Social_Recursos_Espana_2022",
+    "pregunta": (
+        "¿Cuál es la situación de España en 2022 respecto a la desigualdad social y la dotación de recursos "
+        "en centros desfavorecidos en comparación con el resto de países analizados?"
+    ),
+    "herramientas_imprescindibles": [],
+    "referencia": {
+        "datos_clave": [
+            "Gini de la renta en España (2022): 0,316 (puesto 15 de 31 países, muy próximo a la mediana de 0,309).",
+            "Dispersión del ESCS dentro del país: 1,009 (puesto 5 de 33 países, frente a una mediana de 0,920).",
+            "Segregación social entre centros: 23,288% (puesto 23 de 33 países, por debajo de la mediana de 26,106%).",
+            "Brecha de alumnos por profesor entre centros desfavorecidos y favorecidos: -4,536 (puesto 30 de 31, frente a una mediana de -1,247)."
+        ],
+        "conclusiones_esperadas": [
+            "España presenta un contraste importante en equidad social: aunque su desigualdad de ingresos (Gini) es media y tiene baja segregación escolar entre centros, sufre una de las mayores dispersiones socioeconómicas internas entre familias (ESCS) de los países estudiados.",
+            "En cuanto a recursos, la brecha negativa (-4,54) en alumnos por profesor es un indicador positivo de equidad: demuestra que en España los centros más desfavorecidos cuentan con ratios más reducidos (están mejor dotados en personal) que los centros favorecidos, situándose entre los países con mayor compensación o menor saturación en entornos vulnerables."
+        ]
+    }
+}
+
+caso_impacto_desigualdad_rendimiento = {
+    "id": "CS_Impacto_Desigualdad_y_Brecha_Recursos_Matematicas",
+    "pregunta": (
+        "¿Cómo se relacionan la desigualdad social y las brechas de recursos entre centros con el rendimiento en matemáticas en PISA? "
+        "¿Están sistemáticamente peor dotados los colegios desfavorecidos?"
+    ),
+    "herramientas_imprescindibles": [],
+    "referencia": {
+        "datos_clave": [
+            "Correlaciones negativas con matemáticas en variables sociales (estandarizadas por edición): dispersión del ESCS (r = -0,70), índice de Gini (r = -0,59) y segregación social entre centros (r = -0,57). Las tres métricas se solapan moderadamente entre sí (r entre 0,42 y 0,58).",
+            "Correlaciones negativas en brechas de recursos: escasez de material (r = -0,55, datos desde 2015), alumnos por profesor (r = -0,47) y escasez de personal (r = -0,41). El tamaño de clase (r = -0,31) y el profesorado certificado (r = -0,24) muestran relaciones más débiles.",
+            "En 2022, en 22 de 31 países los centros desfavorecidos tienen menos alumnos por profesor (brecha negativa) y en 29 de 31 tienen clases más pequeñas.",
+            "Excepciones en 2022 con brecha positiva (peor dotación en desfavorecidos): 9 países en ratio alumnos/profesor (CHE, CZE, DNK, FRA, GBR, MEX, PRT, TUR, USA) y 2 países en tamaño de clase (GBR, POL)."
+        ],
+        "conclusiones_esperadas": [
+            "Tanto la desigualdad socioeconómica como la peor dotación relativa en centros vulnerables se asocian de forma consistente con un menor rendimiento medio nacional en matemáticas, siendo la dispersión interna del ESCS el factor con la relación negativa más fuerte.",
+            "Los centros desfavorecidos no están siempre peor dotados en términos cuantitativos: en la gran mayoría de los países cuentan con clases más pequeñas y menos alumnos por docente (lo cual puede responder a políticas compensatorias o a la presencia de escuelas rurales pequeñas).",
+            "El agente debe matizar que la proporción de profesorado certificado arroja un signo contrario al esperado y poco concluyente, y advertir que estas correlaciones entre países son muy estables en el tiempo pero no implican causalidad directa."
+        ]
+    }
+}
+## ==================================================Relativo al NOTEBOOK 01_EDA_equidad=================================================== ##
+
+
 # caso_estudio_deberes = {
 #     #Identificación del caso de prueba, id y pregunta pasada al agente_pisa
 #     "id": "CS1_Impacto_Deberes_Saturacion",
