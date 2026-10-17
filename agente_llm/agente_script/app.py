@@ -3,7 +3,7 @@ import streamlit as st
 import uuid
 import re
 from pathlib import Path
-from agente_pisa import agente_pisa  # <-- Tu agente compilado
+from agente_llm.agente_script.agente_pisa import agente_pisa  # <-- Tu agente compilado
 
 st.set_page_config(page_title="Agente PISA ", layout="wide")
 st.title("📊 Asistente de Investigación PISA")
