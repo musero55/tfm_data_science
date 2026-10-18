@@ -2,22 +2,24 @@
 pisa_pipeline.py
 =================
 
-Procesamiento de microdatos PISA 2012+ (dominios MATH, READ, SCIE).
+Construcción, validación y lectura de las tablas maestras de PISA 2012+ (dominios MATH, READ, SCIE).
 
 Flujo (ver `notebooks/fase_1_data_ingestion_eda/00_pipeline_multiedicion_PISA.ipynb`):
 
     1. `procesar_edicion`: lee estudiantes y centros de una edición, filtra países y
        guarda 2 parquets sin imputar y con todas las columnas en `data/raw/datos_anuales/`,
        más las columnas `*_TREND` de `escs_trend.csv`.
-    2. `leer_vista_estudiantes` / `leer_vista_colegios`: leen del parquet solo las
-       columnas curadas, para EDA.
-    3. `agregar_pv_por_pais` / `agregar_por_pais`: medias ponderadas por país.
-    4. `validar_tablas` y `generar_diccionario_columnas`: control de calidad y
+    2. `validar_tablas` y `generar_diccionario_columnas`: control de calidad y
        documentación de las tablas.
+    3. `rutas_datos_anuales`: rutas de los parquets de una edición; `leer_vista_estudiantes` /
+       `leer_vista_colegios`: leen solo las columnas curadas, para el EDA.
+
+Las estadísticas sobre las tablas maestras (nulos, medias ponderadas por país, estrato o
+centro y reparto de la varianza) están en `pisa_estadisticas.py`.
 
 Estudiantes y centros son siempre tablas separadas (comparten CNT, STRATUM, CNTSCHID).
 
-⚠️ Las ediciones difieren: formato (2012 solo en .txt, convertible con
+Aviso: las ediciones difieren: formato (2012 solo en .txt, convertible con
 `pisa_txt_a_sav.py`; 2025 solo .sav), nombres de columna (`alias_*` en
 `EDICIONES_PISA`), nº de valores plausibles (5 en 2012) y módulos de contexto
 administrados. Los índices de contexto no son necesariamente comparables entre
@@ -106,8 +108,11 @@ INDICES_TREND = {
     'ESCS': 'escs_trend', 'HISEI': 'hisei_trend',
     'HOMEPOS': 'homepos_trend', 'PAREDINT': 'paredint_trend',
 }
+
 COLUMNAS_TREND = [f'{c}_TREND' for c in INDICES_TREND]
+
 CICLO_ESCS_TREND = {2012: 5, 2015: 6, 2018: 7}          # ciclo de cada edición en el csv
+
 _MODULO_IDS_ESCS_TREND = {2012: None, 2015: 100000, 2018: 100000}  # 2015/2018: sin prefijo de país
 
 # Contexto del estudiante que se analiza (no todo existe en todas las ediciones).
@@ -137,6 +142,8 @@ def columnas_pv(dominio: str, n_pv: int = 10) -> list[str]:
         raise ValueError(f"Dominio '{dominio}' no reconocido. Usa uno de {DOMINIOS}")
     return [f'PV{numero_pv}{dominio}' for numero_pv in range(1, n_pv + 1)]
 
+
+# 1. Lectura de los ficheros originales
 
 # pyreadstat tiene una función por formato con la misma firma
 LECTORES_PYREADSTAT = {
@@ -210,7 +217,7 @@ def _traducir_columnas(
     return a_leer, renombrar
 
 
-# 1. Submuestreo estratificado (opcional)
+# 2. Submuestreo estratificado (opcional)
 
 def leer_escuelas_unicas(
     ruta_estudiantes: str,
@@ -265,7 +272,7 @@ def submuestreo_estratificado(
     return escuelas_seleccionadas, factores_dict, df_groups
 
 
-# 2. Lectura de estudiantes y centros
+# 3. Lectura de estudiantes y centros, y peso senado
 
 def leer_estudiantes_submuestra(
     ruta_estudiantes: str,
@@ -365,127 +372,7 @@ def leer_colegios(
     return df_colegios.rename(columns=renombrar)
 
 
-def unir_alumnos_colegios(
-    df_alumnos: pd.DataFrame,
-    df_colegios: pd.DataFrame,
-    claves=('CNT', 'STRATUM', 'CNTSCHID'),
-) -> pd.DataFrame:
-    """Left join alumnos-centros (no se usa: las tablas se mantienen separadas)."""
-    return pd.merge(df_alumnos, df_colegios, on=list(claves), how='left')
-
-
-# 3. Nulos
-
-def porcentaje_nulos(datos: pd.DataFrame) -> pd.Series:
-    """% de nulos por columna, de mayor a menor."""
-    return (datos.isnull().sum() / len(datos) * 100).sort_values(ascending=False)
-
-
-def porcentaje_nulos_por_pais(datos: pd.DataFrame, columna: str, pais_col: str = 'CNT') -> pd.DataFrame:
-    """% de nulos de `columna` en cada país, de mayor a menor."""
-    resultado = datos[columna].isna().groupby(datos[pais_col]).mean() * 100
-    return (
-        resultado.reset_index(name=f'pct_nulos_{columna}')
-        .sort_values(f'pct_nulos_{columna}', ascending=False)
-    )
-
-
-# 4. Agregación por país
-
-def agregar_por_pais(
-    datos: pd.DataFrame,
-    indices: list[str],
-    peso_col: str = 'W_FSTUWT',
-    pais_col: str = 'CNT',
-) -> pd.DataFrame:
-    """Media ponderada por país de cada columna de `indices`."""
-    return datos.groupby(pais_col).apply(
-        lambda datos_pais: pd.Series({
-            indice: np.average(datos_pais[indice], weights=datos_pais[peso_col])
-            for indice in indices
-        }),
-        include_groups=False,
-    )
-
-
-def agregar_pv_por_pais(
-    datos: pd.DataFrame,
-    dominio: str,
-    peso_col: str = 'W_FSTUWT',
-    pais_col: str = 'CNT',
-) -> pd.Series:
-    """Media por país de los PV de un dominio: promedia los PV de cada alumno y
-    pondera por `peso_col`. Serie vacía si `datos` no tiene PV de ese dominio."""
-    columnas_pv_dominio = [columna for columna in columnas_pv(dominio) if columna in datos.columns]
-    if not columnas_pv_dominio:
-        return pd.Series(dtype=float, name=dominio)
-
-    datos_temporales = pd.DataFrame({
-        'media_pv': datos[columnas_pv_dominio].mean(axis=1),
-        peso_col: datos[peso_col],
-        pais_col: datos[pais_col],
-    })
-
-    return datos_temporales.groupby(pais_col).apply(
-        lambda datos_pais: np.average(datos_pais['media_pv'], weights=datos_pais[peso_col]),
-        include_groups=False,
-    )
-
-
-# 5. Orquestación por edición
-
-def _normalizar_ids(datos: pd.DataFrame) -> pd.DataFrame:
-    """Ids de centro y alumno a dtype 'string' (vienen como número o como texto con
-    ceros, que se conservan). Los numéricos pasan por Int64 para no quedar como
-    '724.0'; no usar `astype(str)`: convertiría los nulos en el texto 'None'."""
-    for columna_id in ('CNTSCHID', 'CNTSTUID'):
-        if columna_id in datos.columns:
-            if pd.api.types.is_numeric_dtype(datos[columna_id]):
-                datos[columna_id] = datos[columna_id].astype('Int64')
-            datos[columna_id] = datos[columna_id].astype('string')
-    return datos
-
-
-# Columnas añadidas por el pipeline (las *_adj y factor_inflacion solo con submuestreo)
-_COLUMNAS_DERIVADAS_ESTUDIANTE = ['SENWT', 'factor_inflacion', 'W_FSTUWT_adj', 'SENWT_adj', 'EDICION', 'DOMINIO_PRINCIPAL']
-_COLUMNAS_DERIVADAS_COLEGIO = ['factor_inflacion', 'EDICION']
-
-
-def _columnas_vista_estudiantes(nombres) -> list[str]:
-    columnas_valores_plausibles = [columna for columna in sum((columnas_pv(dominio) for dominio in DOMINIOS), []) if columna in nombres]
-    base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + columnas_valores_plausibles + COLUMNAS_CONTEXTO_ESTUDIANTE
-    return [columna for columna in dict.fromkeys(base) if columna in nombres]
-
-
-def _columnas_vista_colegios(nombres) -> list[str]:
-    base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
-            + [f'{columna}_adj' for columna in COLUMNAS_PESO_COLEGIO]
-            + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
-    return [columna for columna in dict.fromkeys(base) if columna in nombres]
-
-
-def vista_estudiantes(datos: pd.DataFrame) -> pd.DataFrame:
-    """Copia de `datos` con solo ids, pesos, PV y `COLUMNAS_CONTEXTO_ESTUDIANTE`. Los
-    parquets guardan todas las columnas; esto acota lo que usa el EDA."""
-    return datos[_columnas_vista_estudiantes(set(datos.columns))].copy()
-
-
-def vista_colegios(datos: pd.DataFrame) -> pd.DataFrame:
-    """Como `vista_estudiantes`, para la tabla de centros."""
-    return datos[_columnas_vista_colegios(set(datos.columns))].copy()
-
-
-def leer_vista_estudiantes(ruta_parquet: str) -> pd.DataFrame:
-    """`vista_estudiantes` leyendo del parquet solo esas columnas (sin cargar todas)."""
-    nombres = pq.ParquetFile(ruta_parquet).schema.names
-    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_estudiantes(set(nombres)))
-
-
-def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
-    """`vista_colegios` leyendo del parquet solo esas columnas."""
-    nombres = pq.ParquetFile(ruta_parquet).schema.names
-    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
-
+# 4. Índices reescalados y tipos de columna
 
 def añadir_indices_trend(datos: pd.DataFrame, año: int, ruta_csv: str) -> pd.DataFrame:
     """Añade `ESCS_TREND`, `HISEI_TREND`, `HOMEPOS_TREND` y `PAREDINT_TREND` desde
@@ -520,12 +407,26 @@ def añadir_indices_trend(datos: pd.DataFrame, año: int, ruta_csv: str) -> pd.D
     return datos.assign(**{f'{indice}_TREND': union[columna_ocde].to_numpy() for indice, columna_ocde in INDICES_TREND.items()})
 
 
+def _normalizar_ids(datos: pd.DataFrame) -> pd.DataFrame:
+    """Ids de centro y alumno a dtype 'string' (vienen como número o como texto con
+    ceros, que se conservan). Los numéricos pasan por Int64 para no quedar como
+    '724.0'; no usar `astype(str)`: convertiría los nulos en el texto 'None'."""
+    for columna_id in ('CNTSCHID', 'CNTSTUID'):
+        if columna_id in datos.columns:
+            if pd.api.types.is_numeric_dtype(datos[columna_id]):
+                datos[columna_id] = datos[columna_id].astype('Int64')
+            datos[columna_id] = datos[columna_id].astype('string')
+    return datos
+
+
 def _objetos_a_string(datos: pd.DataFrame) -> pd.DataFrame:
     """Columnas object a dtype 'string' (pyarrow falla con tipos mezclados)."""
     for columna in datos.select_dtypes(include='object').columns:
         datos[columna] = datos[columna].map(lambda valor: valor if pd.isna(valor) else str(valor)).astype('string')
     return datos
 
+
+# 5. Construcción de las tablas maestras de una edición
 
 def rutas_datos_anuales(ruta_raw_base: str, año: int) -> tuple[str, str]:
     """Rutas (estudiantes, colegios) de los parquets de una edición en `datos_anuales/`, dentro de `ruta_raw_base` (`data/raw`)."""
@@ -770,3 +671,37 @@ def generar_diccionario_columnas(
     if ruta_salida:
         diccionario.to_csv(ruta_salida, index=False, encoding='utf-8-sig')
     return diccionario
+
+
+# 7. Lectura de las tablas maestras para el EDA
+
+# Columnas añadidas por el pipeline (las *_adj y factor_inflacion solo con submuestreo)
+_COLUMNAS_DERIVADAS_ESTUDIANTE = ['SENWT', 'factor_inflacion', 'W_FSTUWT_adj', 'SENWT_adj', 'EDICION', 'DOMINIO_PRINCIPAL']
+
+_COLUMNAS_DERIVADAS_COLEGIO = ['factor_inflacion', 'EDICION']
+
+
+def _columnas_vista_estudiantes(nombres) -> list[str]:
+    columnas_valores_plausibles = [columna for columna in sum((columnas_pv(dominio) for dominio in DOMINIOS), []) if columna in nombres]
+    base = COLUMNAS_BASICAS + COLUMNAS_ID_ALUMNO + _COLUMNAS_DERIVADAS_ESTUDIANTE + columnas_valores_plausibles + COLUMNAS_CONTEXTO_ESTUDIANTE
+    return [columna for columna in dict.fromkeys(base) if columna in nombres]
+
+
+def _columnas_vista_colegios(nombres) -> list[str]:
+    base = (['CNT', 'STRATUM', 'CNTSCHID'] + COLUMNAS_PESO_COLEGIO
+            + [f'{columna}_adj' for columna in COLUMNAS_PESO_COLEGIO]
+            + _COLUMNAS_DERIVADAS_COLEGIO + COLUMNAS_CONTEXTO_COLEGIO)
+    return [columna for columna in dict.fromkeys(base) if columna in nombres]
+
+
+def leer_vista_estudiantes(ruta_parquet: str) -> pd.DataFrame:
+    """Lee del parquet de estudiantes solo ids, pesos, PV y `COLUMNAS_CONTEXTO_ESTUDIANTE`. Los
+    parquets guardan todas las columnas; esto acota lo que usa el EDA sin cargarlas todas."""
+    nombres = pq.ParquetFile(ruta_parquet).schema.names
+    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_estudiantes(set(nombres)))
+
+
+def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
+    """Como `leer_vista_estudiantes`, para la tabla de centros (ids, pesos y `COLUMNAS_CONTEXTO_COLEGIO`)."""
+    nombres = pq.ParquetFile(ruta_parquet).schema.names
+    return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
