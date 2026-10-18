@@ -2,9 +2,11 @@
 datos_externos.py
 =================
 
-Descarga de datos externos (OCDE y Banco Mundial) para el análisis de presupuesto.
-Cada serie se guarda como CSV en `data/raw/externos/`. Las fuentes están descritas
-al principio del notebook `01_EDA_presupuestos.ipynb`.
+Descarga y lectura de los datos externos de los 33 países OCDE: gasto educativo, personal,
+matrícula y estadísticas de referencia de la OCDE, Gini (OCDE y Banco Mundial), PIB per cápita e
+indicadores macroeconómicos del Banco Mundial y gasto público por alumno de Eurostat. Cada serie se
+guarda como CSV en `data/raw/externos/`. Las fuentes están descritas al principio del notebook
+`01_EDA_presupuestos.ipynb`; los indicadores macroeconómicos, en `01_EDA_factores_macroeconomicos.ipynb`.
 
 Las APIs son públicas y no necesitan clave. La de la OCDE (SDMX) tiene límite de
 consultas por hora, así que `descargar_todo` salta los ficheros que ya existen.
@@ -16,6 +18,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 
 import pandas as pd
 
@@ -112,8 +115,8 @@ SERIES_OCDE = {
     },
 }
 
-# Eurostat: gasto público por alumno (EUR, PPS, % del PIB per cápita), solo países de la UE.
-# Sirve para rellenar el gasto de Bélgica y Países Bajos en 2012, que la OCDE no publica.
+# Eurostat: gasto público por alumno (EUR, PPS, % del PIB per cápita), solo países de la UE. No entra en la
+# tabla de presupuesto (PPS corrientes, solo UE): `01_EDA_presupuestos.ipynb` solo mira su cobertura.
 EUROSTAT_GASTO_ALUMNO = 'educ_uoe_fine09'
 GEO_EUROSTAT = {'AUT': 'AT', 'BEL': 'BE', 'CZE': 'CZ', 'DEU': 'DE', 'DNK': 'DK', 'ESP': 'ES', 'EST': 'EE',
                 'FIN': 'FI', 'FRA': 'FR', 'GRC': 'EL', 'HUN': 'HU', 'IRL': 'IE', 'ITA': 'IT', 'NLD': 'NL',
@@ -129,20 +132,10 @@ def _get(url: str, timeout: int = 300) -> bytes:
         return respuesta.read()
 
 
-def _n_dimensiones(dataflow: str, agencia: str = AGENCIA_EDU) -> int:
-    """Nº de dimensiones del DSD de un dataflow (consulta el catálogo de la OCDE)."""
-    import xml.etree.ElementTree as ET
-    dsd = dataflow.split('@')[0]
-    xml = _get(f'https://sdmx.oecd.org/public/rest/datastructure/{agencia}/{dsd}/latest', timeout=60)
-    espacio_nombres_sdmx = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
-    return len(next(ET.fromstring(xml).iter(espacio_nombres_sdmx + 'DimensionList')).findall(espacio_nombres_sdmx + 'Dimension'))
-
-
 def url_oecd(serie: dict, paises: list[str], inicio: int = 2000) -> str:
     """URL de consulta CSV de una serie de `SERIES_OCDE` para los países indicados."""
     agencia = serie.get('agencia', AGENCIA_EDU)
-    dims = serie['dims'] if serie['dims'] is not None else [None] * (_n_dimensiones(serie['dataflow'], agencia) - 1)
-    clave = '.'.join(['+'.join(paises)] + [dimension or '' for dimension in dims])
+    clave = '.'.join(['+'.join(paises)] + [dimension or '' for dimension in serie['dims']])
     return (f"{URL_OCDE}/{agencia},{serie['dataflow']},{serie['version']}/{clave}"
             f"?startPeriod={inicio}&format=csvfilewithlabels")
 
@@ -157,16 +150,19 @@ def descargar_oecd(nombre: str, ruta_carpeta: str, paises: list[str] | None = No
     return ruta
 
 
+def _observaciones_banco_mundial(indicador: str, paises: list[str], inicio: int, fin: int) -> list[dict]:
+    """Observaciones (pais, año, valor) de un indicador del Banco Mundial (API v2)."""
+    url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
+           f"?format=json&date={inicio}:{fin}&per_page=20000")
+    _, filas = json.loads(_get(url))
+    return [{'pais': observacion['countryiso3code'], 'año': int(observacion['date']), 'valor': observacion['value']} for observacion in filas]
+
+
 def descargar_banco_mundial(indicador: str, nombre: str, ruta_carpeta: str, paises: list[str] | None = None,
                             inicio: int = 2000, fin: int = 2023) -> str:
     """Indicador del Banco Mundial a `<ruta_carpeta>/<nombre>.csv` (columnas: pais, año, valor)."""
     paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
-    url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
-           f"?format=json&date={inicio}:{fin}&per_page=20000")
-    _, filas = json.loads(_get(url))
-    datos = pd.DataFrame(
-        [{'pais': observacion['countryiso3code'], 'año': int(observacion['date']), 'valor': observacion['value']} for observacion in filas]
-    ).sort_values(['pais', 'año'])
+    datos = pd.DataFrame(_observaciones_banco_mundial(indicador, paises, inicio, fin)).sort_values(['pais', 'año'])
     ruta = os.path.join(ruta_carpeta, f'{nombre}.csv')
     datos.to_csv(ruta, index=False)
     return ruta
@@ -203,10 +199,8 @@ def descargar_macro_banco_mundial(ruta_carpeta: str, paises: list[str] | None = 
     paises = paises or PAISES_OCDE_TODAS_LAS_EDICIONES
     observaciones = []
     for indicador in INDICADORES_BANCO_MUNDIAL:
-        url = (f"{URL_BANCO_MUNDIAL}/country/{';'.join(paises)}/indicator/{indicador}"
-               f"?format=json&date={inicio}:{fin}&per_page=20000")
-        _, filas = json.loads(_get(url))
-        observaciones += [{'pais': fila['countryiso3code'], 'año': int(fila['date']), 'indicador': indicador, 'valor': fila['value']} for fila in filas]
+        observaciones += [{'pais': observacion['pais'], 'año': observacion['año'], 'indicador': indicador, 'valor': observacion['valor']}
+                          for observacion in _observaciones_banco_mundial(indicador, paises, inicio, fin)]
     datos = pd.DataFrame(observaciones).sort_values(['indicador', 'pais', 'año'])
     ruta = os.path.join(ruta_carpeta, 'macro_banco_mundial.csv')
     datos.to_csv(ruta, index=False)
@@ -241,7 +235,9 @@ def descargar_eurostat(ruta_carpeta: str, inicio: int = 2010) -> str:
 
 
 def descargar_todo(ruta_carpeta: str, forzar: bool = False) -> dict[str, str]:
-    """Descarga las series de la OCDE, el PIB del Banco Mundial y el gasto de Eurostat. Salta las que ya existen salvo `forzar=True`."""
+    """Descarga las series de la OCDE, el PIB per cápita y el Gini del Banco Mundial y el gasto de Eurostat.
+    Salta las que ya existen salvo `forzar=True`. Los indicadores macroeconómicos se descargan aparte
+    (`descargar_macro_banco_mundial`)."""
     os.makedirs(ruta_carpeta, exist_ok=True)
     rutas = {}
     for nombre in SERIES_OCDE:
@@ -266,6 +262,26 @@ def descargar_todo(ruta_carpeta: str, forzar: bool = False) -> dict[str, str]:
         descargar_eurostat(ruta_carpeta)
     rutas['gasto_publico_por_alumno_eurostat'] = ruta
     return rutas
+
+
+# ---------------------------------------------------------------- lectura
+
+def cargar_oecd(ruta_csv: str) -> pd.DataFrame:
+    """Lee un CSV de la OCDE descargado con `descargar_oecd` y deja las columnas
+    `pais`, `año`, `valor` y las dimensiones presentes con nombres cortos
+    (`medida`, `nivel`, `institucion`, `fuente`, `tipo_gasto`, `unidad`, `precios`,
+    `edad`, `PERS_EXP_LEV`). Descarta las filas sin valor."""
+    datos = pd.read_csv(ruta_csv, low_memory=False)
+    datos = datos.rename(columns={'REF_AREA': 'pais', 'TIME_PERIOD': 'año', 'OBS_VALUE': 'valor',
+                          'EDUCATION_LEV': 'nivel', 'INST_TYPE_EDU': 'institucion',
+                          'UNIT_MEASURE': 'unidad', 'PRICE_BASE': 'precios', 'EXP_SOURCE': 'fuente',
+                          'EXPENDITURE_TYPE': 'tipo_gasto', 'MEASURE': 'medida',
+                          'EXP_DESTINATION': 'institucion', 'AGE': 'edad'})   # en los dataflows de gasto, el tipo de institución es EXP_DESTINATION
+    if 'año' not in datos.columns:   # los dataflows de salarios llaman a la columna de tiempo REF_PERIOD
+        datos = datos.rename(columns={'REF_PERIOD': 'año'})
+    columnas = ['pais', 'año', 'valor'] + [columna for columna in ('medida', 'nivel', 'institucion', 'fuente', 'tipo_gasto',
+                                                      'unidad', 'precios', 'edad', 'PERS_EXP_LEV') if columna in datos.columns]
+    return datos.loc[datos['valor'].notna(), columnas]
 
 
 # ---------------------------------------------------------------- enlaces y comprobación
@@ -313,9 +329,9 @@ def _estado_api(url: str, formato: str) -> str:
         else:
             n_filas = len(json.loads(datos)['value'])
         return f'ok ({n_filas} filas)' if n_filas else 'sin datos'
-    except urllib.error.HTTPError as e:
+    except urllib.error.HTTPError as error:
         return 'límite de consultas (429): reintentar más tarde' if error.code == 429 else f'ERROR: {error}'
-    except Exception as e:
+    except Exception as error:
         return f'ERROR: {error}'
 
 
@@ -324,7 +340,6 @@ def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
     catálogo (la web es una SPA y siempre responde 200); los demás portales, con una petición
     HTTP; la API, pidiendo la muestra (`api=False` la omite: la OCDE limita las consultas por hora).
     Devuelve la tabla con `portal_ok` y `api_ok`."""
-    import xml.etree.ElementTree as ET
     tabla_enlaces = enlaces_fuentes()
     espacio_nombres_sdmx = '{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}'
     catalogos = {}
@@ -332,7 +347,7 @@ def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
         try:
             raiz = ET.fromstring(_get(f'https://sdmx.oecd.org/public/rest/dataflow/{agencia}', 120))
             catalogos[agencia] = {dataflow_catalogo.get('id'): dataflow_catalogo.get('version') for dataflow_catalogo in raiz.iter(espacio_nombres_sdmx + 'Dataflow')}
-        except Exception as e:
+        except Exception as error:
             print(f'No se pudo leer el catálogo de la OCDE ({agencia}): {error}')
 
     def portal_ok(enlace):
@@ -345,27 +360,9 @@ def comprobar_fuentes(api: bool = True) -> pd.DataFrame:
         try:
             _get(enlace['portal'], 60)
             return 'ok'
-        except Exception as e:
+        except Exception as error:
             return f'ERROR: {error}'
 
     tabla_enlaces['portal_ok'] = [portal_ok(enlace) for _, enlace in tabla_enlaces.iterrows()]
     tabla_enlaces['api_ok'] = [_estado_api(enlace['api'], enlace['formato']) if api else 'sin comprobar' for _, enlace in tabla_enlaces.iterrows()]
     return tabla_enlaces
-
-
-def cargar_oecd(ruta_csv: str) -> pd.DataFrame:
-    """Lee un CSV de la OCDE descargado con `descargar_oecd` y deja las columnas
-    `pais`, `año`, `valor` y las dimensiones presentes con nombres cortos
-    (`medida`, `nivel`, `institucion`, `fuente`, `tipo_gasto`, `unidad`, `precios`,
-    `edad`, `PERS_EXP_LEV`). Descarta las filas sin valor."""
-    datos = pd.read_csv(ruta_csv, low_memory=False)
-    datos = datos.rename(columns={'REF_AREA': 'pais', 'TIME_PERIOD': 'año', 'OBS_VALUE': 'valor',
-                          'EDUCATION_LEV': 'nivel', 'INST_TYPE_EDU': 'institucion',
-                          'UNIT_MEASURE': 'unidad', 'PRICE_BASE': 'precios', 'EXP_SOURCE': 'fuente',
-                          'EXPENDITURE_TYPE': 'tipo_gasto', 'MEASURE': 'medida',
-                          'EXP_DESTINATION': 'institucion', 'AGE': 'edad'})   # en los dataflows de gasto, el tipo de institución es EXP_DESTINATION
-    if 'año' not in datos.columns:   # los dataflows de salarios llaman a la columna de tiempo REF_PERIOD
-        datos = datos.rename(columns={'REF_PERIOD': 'año'})
-    columnas = ['pais', 'año', 'valor'] + [columna for columna in ('medida', 'nivel', 'institucion', 'fuente', 'tipo_gasto',
-                                                      'unidad', 'precios', 'edad', 'PERS_EXP_LEV') if columna in datos.columns]
-    return datos.loc[datos['valor'].notna(), columnas]
