@@ -2,19 +2,21 @@
 presupuesto_pais_edicion.py
 ===========================
 
-Construye la tabla país-edición para el análisis de presupuesto: una fila por país
-(33 OCDE) y edición PISA (2012, 2015, 2018, 2022), con resultados y contexto de PISA
-y las variables externas de gasto, renta y personal de `data/raw/externos/`.
+Tabla país-edición para el análisis de presupuesto: una fila por país (33 OCDE) y edición PISA
+(2012, 2015, 2018, 2022), con resultados y contexto de PISA calculados desde las tablas maestras
+y las variables externas de gasto, renta y personal de `data/raw/externos/`. La usan
+`01_EDA_presupuestos.ipynb` y `01_EDA_equidad.ipynb`.
 
-La tabla se divide en dos (`dividir_tabla`): la **económica** (gasto, financiación,
-composición, salarios, renta y dotación de personal, más los resultados de PISA y el
-`ESCS` medio como control) y el **contexto educativo** (variables no económicas:
-segregación, autonomía, tiempo de aprendizaje, equidad de recursos, perfil del
-profesorado, escolarización...), que se guarda aparte.
+    * `construir_tabla`: la tabla completa; `dividir_tabla` separa las variables económicas
+      del contexto educativo (segregación, recursos de los centros, profesorado...).
+    * `SELECCION` / `serie_anual_presupuesto`: las variables básicas que se guardan en
+      `data/intermediate/presupuesto_pais_edicion.parquet` y la serie anual 2000-2024.
+    * `residuo_ols` e `inventario_variables`: análisis de `01_EDA_presupuestos.ipynb` (los perfiles de gasto
+      se agrupan con `perfiles_kmeans.py`).
 
-Las fuentes están descritas en `01_EDA_presupuestos.ipynb`. Los huecos se dejan como
-NaN: nada se imputa (los ceros que en realidad son datos no disponibles se pasan a NaN). Solo se interpolan linealmente los huecos *interiores* de una
-serie anual para calcular las medias de años previos y el gasto acumulado.
+Nada se imputa: los huecos son NaN (también los ceros que en realidad son datos no disponibles).
+Solo se interpolan linealmente los huecos *interiores* de una serie anual para calcular las
+medias de años previos y el gasto acumulado.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from src.datos_externos import cargar_oecd
+from src.pisa_estadisticas import agregar_desviacion_ponderada, agregar_media_ponderada, agregar_pv, reparto_varianza
 from src.pisa_pipeline import DOMINIOS, PAISES_OCDE_TODAS_LAS_EDICIONES, columnas_pv, rutas_datos_anuales
 
 EDICIONES = [2012, 2015, 2018, 2022]
@@ -39,9 +42,6 @@ COLUMNAS_FINANCIACION = {
     'pisa_financiacion_centro_donaciones_pct': ('SC02Q03', 'SC016Q03TA'),
     'pisa_financiacion_centro_otras_pct': ('SC02Q04', 'SC016Q04TA'),
 }
-
-# Recursos de centro cuya distribución entre centros desfavorecidos y favorecidos se mide
-RECURSOS_BRECHA = ['alumnos_por_profesor', 'tamaño_clase', 'profesorado_certificado', 'escasez_material', 'escasez_personal']
 
 # Nombre de cada dominio y de cada nivel de la OCDE en las columnas de la tabla
 NOMBRE_DOMINIO = {'MATH': 'matematicas', 'READ': 'lectura', 'SCIE': 'ciencias'}
@@ -99,20 +99,6 @@ def dividir_tabla(tabla: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return (tabla[CLAVE + RESULTADOS + economicas].copy(), tabla[CLAVE + CONTEXTO_EDUCATIVO].copy())
 
 
-def media_ponderada(valores: pd.Series, pesos: pd.Series) -> float:
-    """Media de `valores` ponderada por `pesos`, ignorando nulos. NaN si no hay datos."""
-    filas_validas = valores.notna() & pesos.notna()
-    return float(np.average(valores[filas_validas], weights=pesos[filas_validas])) if filas_validas.any() else np.nan
-
-
-def desviacion_ponderada(valores: pd.Series, pesos: pd.Series) -> float:
-    filas_validas = valores.notna() & pesos.notna()
-    if not filas_validas.any():
-        return np.nan
-    media = np.average(valores[filas_validas], weights=pesos[filas_validas])
-    return float(np.sqrt(np.average((valores[filas_validas] - media) ** 2, weights=pesos[filas_validas])))
-
-
 def primera(nombres, *candidatas: str) -> str | None:
     """Primera de `candidatas` que exista en `nombres` (las ediciones nombran distinto)."""
     return next((candidata for candidata in candidatas if candidata in nombres), None)
@@ -131,43 +117,32 @@ def resultados_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
     minutos = {'pisa_minutos_semanales_matematicas': 'MMINS', 'pisa_minutos_semanales_lengua': 'LMINS', 'pisa_minutos_semanales_ciencias': 'SMINS'}
     minutos = {k: v for k, v in minutos.items() if v in nombres}
     estudiantes = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND'] + columnas_valores_plausibles + list(minutos.values()))
-    filas = []
-    for pais, estudiantes_pais in estudiantes.groupby('CNT'):
-        fila = {'pais': pais, 'pisa_numero_alumnos': len(estudiantes_pais)}
-        for dominio in DOMINIOS:
-            columnas_dominio = [columna for columna in columnas_pv(dominio) if columna in estudiantes_pais.columns]
-            fila[f'pisa_{NOMBRE_DOMINIO[dominio]}'] = media_ponderada(estudiantes_pais[columnas_dominio].mean(axis=1), estudiantes_pais['W_FSTUWT'])
-        fila['pisa_escs_trend_media'] = media_ponderada(estudiantes_pais['ESCS_TREND'], estudiantes_pais['W_FSTUWT'])
-        fila['pisa_escs_trend_desviacion_tipica'] = desviacion_ponderada(estudiantes_pais['ESCS_TREND'], estudiantes_pais['W_FSTUWT'])
-        for nuevo, origen in minutos.items():
-            fila[nuevo] = media_ponderada(estudiantes_pais[origen].where(estudiantes_pais[origen] > 0), estudiantes_pais['W_FSTUWT'])
-        fila['pisa_segregacion_social_entre_centros_pct'] = segregacion(estudiantes_pais)
-        filas.append(fila)
-    return pd.DataFrame(filas)
-
-
-def segregacion(estudiantes_pais: pd.DataFrame) -> float:
-    """% de la varianza de `ESCS_TREND` que es entre centros (0 = todos los centros
-    igual de mixtos; cuanto más alto, más separados por nivel socioeconómico)."""
-    estudiantes_pais = estudiantes_pais.dropna(subset=['ESCS_TREND', 'CNTSCHID', 'W_FSTUWT'])
-    if estudiantes_pais.empty:
-        return np.nan
-    pesos, escs = estudiantes_pais['W_FSTUWT'], estudiantes_pais['ESCS_TREND']
-    media = np.average(escs, weights=pesos)
-    total = np.average((escs - media) ** 2, weights=pesos)
-    por_centro = estudiantes_pais.assign(_peso_por_escs=pesos * escs).groupby('CNTSCHID').agg(_peso_total=('W_FSTUWT', 'sum'), _peso_por_escs=('_peso_por_escs', 'sum'))
-    por_centro['_escs_medio_centro'] = por_centro['_peso_por_escs'] / por_centro['_peso_total']
-    entre = np.average((por_centro['_escs_medio_centro'] - media) ** 2, weights=por_centro['_peso_total'])
-    return float(100 * entre / total) if total > 0 else np.nan
+    # Medias y desviación ponderadas por país con las funciones de src/pisa_estadisticas.py (las mismas que 01_EDA_notas_asignatura)
+    estudiantes = estudiantes.assign(**{nuevo: estudiantes[origen].where(estudiantes[origen] > 0) for nuevo, origen in minutos.items()})
+    tabla = agregar_media_ponderada(estudiantes.rename(columns={'ESCS_TREND': 'pisa_escs_trend_media'}), ['pisa_escs_trend_media'] + list(minutos))
+    for dominio in DOMINIOS:
+        tabla = tabla.merge(agregar_pv(estudiantes, dominio, nombre=f'pisa_{NOMBRE_DOMINIO[dominio]}'), on='CNT', validate='one_to_one')
+    tabla = tabla.merge(agregar_desviacion_ponderada(estudiantes.rename(columns={'ESCS_TREND': 'pisa_escs_trend_desviacion_tipica'}),
+                                                     ['pisa_escs_trend_desviacion_tipica']), on='CNT', validate='one_to_one')
+    # Número de alumnos y segregación: % de la varianza de ESCS_TREND (ponderada con W_FSTUWT) entre los centros del país
+    # (0 = todos los centros igual de mixtos; cuanto más alto, más separados por nivel socioeconómico)
+    por_pais = estudiantes.groupby('CNT')
+    otras = pd.DataFrame({
+        'pisa_numero_alumnos': por_pais.size(),
+        'pisa_segregacion_social_entre_centros_pct': por_pais.apply(
+            lambda pais: reparto_varianza(pais, 'ESCS_TREND', {'entre centros': ['CNTSCHID']}, 'dentro de los centros', peso_col='W_FSTUWT')['entre centros'],
+            include_groups=False),
+    }).reset_index()
+    columnas = (['pais', 'pisa_numero_alumnos'] + [f'pisa_{NOMBRE_DOMINIO[dominio]}' for dominio in DOMINIOS]
+                + ['pisa_escs_trend_media', 'pisa_escs_trend_desviacion_tipica'] + list(minutos) + ['pisa_segregacion_social_entre_centros_pct'])
+    return tabla.merge(otras, on='CNT', validate='one_to_one').rename(columns={'CNT': 'pais'}).astype({'pais': object})[columnas]
 
 
 def escs_de_centros(ruta_raw_base: str, año: int) -> pd.DataFrame:
     """Media de `ESCS_TREND` de los alumnos de cada centro (ponderada por `W_FSTUWT`)."""
     ruta, _ = rutas_datos_anuales(ruta_raw_base, año)
     estudiantes = pd.read_parquet(ruta, columns=['CNT', 'CNTSCHID', 'W_FSTUWT', 'ESCS_TREND']).dropna(subset=['ESCS_TREND'])
-    estudiantes = estudiantes.assign(_peso_por_escs=estudiantes['W_FSTUWT'] * estudiantes['ESCS_TREND'])
-    escs_por_centro = estudiantes.groupby(['CNT', 'CNTSCHID']).agg(_peso_total=('W_FSTUWT', 'sum'), _peso_por_escs=('_peso_por_escs', 'sum'))
-    return (escs_por_centro['_peso_por_escs'] / escs_por_centro['_peso_total']).rename('escs_centro').reset_index()
+    return agregar_media_ponderada(estudiantes.rename(columns={'ESCS_TREND': 'escs_centro'}), ['escs_centro'], claves='centro')
 
 
 def centros_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
@@ -194,33 +169,31 @@ def centros_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
         if columna in colegios:
             colegios[columna] = 100 * colegios[columna]
     colegios = colegios.merge(escs_de_centros(ruta_raw_base, año), on=['CNT', 'CNTSCHID'], how='left')
+    colegios['_centro_publico_pct'] = 100 * (colegios['SCHLTYPE'] == 3).where(colegios['SCHLTYPE'].notna()).astype(float)
 
-    filas = []
-    for pais, centros_pais in colegios.groupby('CNT'):
-        pesos_centros = centros_pais['W_SCHGRNRABWT']
-        fila = {'pais': pais, 'pisa_numero_centros': len(centros_pais),
-                'pisa_alumnos_por_profesor': media_ponderada(centros_pais['STRATIO'], pesos_centros),
-                'pisa_tamaño_clase': media_ponderada(centros_pais['CLSIZE'], pesos_centros),
-                'pisa_tamaño_centro': media_ponderada(centros_pais['SCHSIZE'], pesos_centros),
-                'pisa_centros_publicos_pct': 100 * media_ponderada((centros_pais['SCHLTYPE'] == 3).where(centros_pais['SCHLTYPE'].notna()).astype(float), pesos_centros)}
-        for nuevo, origen in financiacion.items():
-            fila[nuevo] = media_ponderada(centros_pais[origen], pesos_centros) if origen else np.nan
-        for nuevo, origen in (('pisa_profesores_certificados_pct', 'CERT'), ('pisa_profesores_master_pct', 'MASTER'),
-                              ('pisa_ordenadores_por_alumno', 'ORDENADORES'), ('pisa_autonomia_recursos', 'AUTONOMIA'),
-                              ('pisa_escasez_material_educativo', 'EDUSHORT'), ('pisa_escasez_personal', 'STAFFSHORT')):
-            fila[nuevo] = media_ponderada(centros_pais[origen], pesos_centros) if origen in centros_pais else np.nan
-        # Brecha de recursos entre el cuartil de centros más desfavorecido y el más favorecido
-        cuartil_inferior, cuartil_superior = centros_pais['escs_centro'].quantile([0.25, 0.75])
-        centros_desfavorecidos, centros_favorecidos = centros_pais[centros_pais['escs_centro'] <= cuartil_inferior], centros_pais[centros_pais['escs_centro'] >= cuartil_superior]
-        for nombre, origen in (('alumnos_por_profesor', 'STRATIO'), ('tamaño_clase', 'CLSIZE'), ('profesorado_certificado', 'CERT'),
-                               ('escasez_material', 'EDUSHORT'), ('escasez_personal', 'STAFFSHORT')):
-            if origen in centros_pais:
-                fila[f'pisa_brecha_{nombre}'] = (media_ponderada(centros_desfavorecidos[origen], centros_desfavorecidos['W_SCHGRNRABWT'])
-                                                 - media_ponderada(centros_favorecidos[origen], centros_favorecidos['W_SCHGRNRABWT']))
-            else:
-                fila[f'pisa_brecha_{nombre}'] = np.nan
-        filas.append(fila)
-    return pd.DataFrame(filas)
+    # Media de cada variable por país, con el peso del centro (las que la edición no tiene quedan NaN)
+    origen_variables = {'pisa_alumnos_por_profesor': 'STRATIO', 'pisa_tamaño_clase': 'CLSIZE', 'pisa_tamaño_centro': 'SCHSIZE',
+                        'pisa_centros_publicos_pct': '_centro_publico_pct', **financiacion,
+                        'pisa_profesores_certificados_pct': 'CERT', 'pisa_profesores_master_pct': 'MASTER',
+                        'pisa_ordenadores_por_alumno': 'ORDENADORES', 'pisa_autonomia_recursos': 'AUTONOMIA',
+                        'pisa_escasez_material_educativo': 'EDUSHORT', 'pisa_escasez_personal': 'STAFFSHORT'}
+    origen_brechas = {'pisa_brecha_alumnos_por_profesor': 'STRATIO', 'pisa_brecha_tamaño_clase': 'CLSIZE', 'pisa_brecha_profesorado_certificado': 'CERT',
+                      'pisa_brecha_escasez_material': 'EDUSHORT', 'pisa_brecha_escasez_personal': 'STAFFSHORT'}
+
+    def media_por_pais(centros, origenes):
+        disponibles = {nuevo: origen for nuevo, origen in origenes.items() if origen in centros.columns}
+        valores = centros[['CNT', 'W_SCHGRNRABWT']].assign(**{nuevo: centros[origen] for nuevo, origen in disponibles.items()})
+        return agregar_media_ponderada(valores, list(disponibles), peso_col='W_SCHGRNRABWT').set_index('CNT')
+
+    tabla = media_por_pais(colegios, origen_variables)
+    tabla.insert(0, 'pisa_numero_centros', colegios.groupby('CNT').size())
+    # Brecha de recursos entre el cuartil de centros más desfavorecido y el más favorecido de cada país
+    escs_por_pais = colegios.groupby('CNT')['escs_centro']
+    desfavorecidos = colegios['escs_centro'] <= escs_por_pais.transform(lambda escs: escs.quantile(0.25))
+    favorecidos = colegios['escs_centro'] >= escs_por_pais.transform(lambda escs: escs.quantile(0.75))
+    tabla = tabla.join(media_por_pais(colegios[desfavorecidos], origen_brechas) - media_por_pais(colegios[favorecidos], origen_brechas))
+    columnas = ['pisa_numero_centros'] + list(origen_variables) + list(origen_brechas)
+    return tabla.reindex(columns=columnas).rename_axis('pais').reset_index().astype({'pais': object})
 
 
 # ---------------------------------------------------------------- series externas
@@ -442,24 +415,6 @@ def residuo_ols(datos: pd.DataFrame, variable_objetivo: str, variables_explicati
     coeficientes, *_ = np.linalg.lstsq(matriz_diseño, datos_completos[variable_objetivo].to_numpy(float), rcond=None)
     residuo = pd.Series(datos_completos[variable_objetivo].to_numpy(float) - matriz_diseño @ coeficientes, index=datos_completos.index, name=f'{variable_objetivo}_residuo')
     return residuo, pd.Series(coeficientes, index=['const'] + variables_explicativas)
-
-
-def agrupar_perfiles(datos: pd.DataFrame, columnas: list[str], numeros_de_grupos=range(2, 7), semilla: int = 42, min_filas_por_grupo: int = 5):
-    """K-means sobre `columnas` estandarizadas, en las filas completas. Elige el nº de
-    grupos con mayor silueta entre los que no dejan ningún grupo con menos de `min_filas_por_grupo`
-    filas. Devuelve (etiquetas indexadas como `datos`, tabla de siluetas)."""
-    from sklearn.cluster import KMeans
-    from sklearn.metrics import silhouette_score
-    datos_completos = datos.dropna(subset=columnas)
-    datos_estandarizados = (datos_completos[columnas] - datos_completos[columnas].mean()) / datos_completos[columnas].std(ddof=0)
-    siluetas, modelos = {}, {}
-    for numero_grupos in numeros_de_grupos:
-        modelo = KMeans(n_clusters=numero_grupos, n_init=20, random_state=semilla).fit(datos_estandarizados)
-        siluetas[numero_grupos], modelos[numero_grupos] = silhouette_score(datos_estandarizados, modelo.labels_), modelo
-    validos = [numero_grupos for numero_grupos in numeros_de_grupos if np.bincount(modelos[numero_grupos].labels_).min() >= min_filas_por_grupo] or list(numeros_de_grupos)
-    mejor = max(validos, key=siluetas.get)
-    etiquetas = pd.Series(modelos[mejor].labels_, index=datos_completos.index, name='perfil')
-    return etiquetas, pd.Series(siluetas, name='silueta')
 
 
 # ---------------------------------------------------------------- inventario de variables
