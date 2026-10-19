@@ -43,7 +43,7 @@ caso_impacto_desigualdad_rendimiento = {
     }
 }
 
-## =======================Relativo al NOTEBOOK 02_EDA_factores_macroeconomicos========================== ##
+## =======================Relativo al NOTEBOOK 01_EDA_factores_macroeconomicos========================== ##
 
 caso_impacto_macroeconomia_rendimiento = {
     "id": "CS_Factores_Macroeconomicos_Rendimiento_Matematicas",
