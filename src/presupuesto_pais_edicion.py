@@ -10,7 +10,8 @@ y las variables externas de gasto, renta y personal de `data/raw/externos/`. La 
     * `construir_tabla`: la tabla completa; `dividir_tabla` separa las variables económicas
       del contexto educativo (segregación, recursos de los centros, profesorado...).
     * `SELECCION` / `serie_anual_presupuesto`: las variables básicas que se guardan en
-      `data/intermediate/presupuesto_pais_edicion.parquet` y la serie anual 2000-2024.
+      `data/intermediate/presupuesto_pais_edicion.parquet` y la serie anual 2000-2024;
+      `rellenar_con_serie_anual` rellena huecos de la tabla con la serie interpolada.
     * `residuo_ols` e `inventario_variables`: análisis de `01_EDA_presupuestos.ipynb` (los perfiles de gasto
       se agrupan con `perfiles_kmeans.py`).
 
@@ -29,19 +30,11 @@ import pyarrow.parquet as pq
 
 from src.datos_externos import cargar_oecd
 from src.pisa_estadisticas import agregar_desviacion_ponderada, agregar_media_ponderada, agregar_pv, reparto_varianza
-from src.pisa_pipeline import DOMINIOS, PAISES_OCDE_TODAS_LAS_EDICIONES, columnas_pv, rutas_datos_anuales
+from src.pisa_pipeline import DOMINIOS, PAISES_OCDE_TODAS_LAS_EDICIONES, columnas_pv, leer_recursos_centros, rutas_datos_anuales
 
 EDICIONES = [2012, 2015, 2018, 2022]
 AÑOS_SERIE = range(1995, 2025)
 AÑO_BASE = 2020   # año de los precios constantes (el mismo que usa la OCDE en el gasto por alumno)
-
-# Financiación del centro (% por origen): 2012 usa otros nombres
-COLUMNAS_FINANCIACION = {
-    'pisa_financiacion_centro_gobierno_pct': ('SC02Q01', 'SC016Q01TA'),
-    'pisa_financiacion_centro_cuotas_pct': ('SC02Q02', 'SC016Q02TA'),
-    'pisa_financiacion_centro_donaciones_pct': ('SC02Q03', 'SC016Q03TA'),
-    'pisa_financiacion_centro_otras_pct': ('SC02Q04', 'SC016Q04TA'),
-}
 
 # Nombre de cada dominio y de cada nivel de la OCDE en las columnas de la tabla
 NOMBRE_DOMINIO = {'MATH': 'matematicas', 'READ': 'lectura', 'SCIE': 'ciencias'}
@@ -99,11 +92,6 @@ def dividir_tabla(tabla: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return (tabla[CLAVE + RESULTADOS + economicas].copy(), tabla[CLAVE + CONTEXTO_EDUCATIVO].copy())
 
 
-def primera(nombres, *candidatas: str) -> str | None:
-    """Primera de `candidatas` que exista en `nombres` (las ediciones nombran distinto)."""
-    return next((candidata for candidata in candidatas if candidata in nombres), None)
-
-
 # ---------------------------------------------------------------- PISA
 
 def resultados_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
@@ -152,33 +140,21 @@ def centros_pisa(ruta_raw_base: str, año: int) -> pd.DataFrame:
     (cuartil inferior menos superior de `ESCS_TREND` medio del centro). Un valor
     negativo en ratio, tamaño de clase o escasez significa que los desfavorecidos
     están mejor dotados; positivo en profesorado certificado, al revés."""
-    _, ruta = rutas_datos_anuales(ruta_raw_base, año)
-    nombres = pq.ParquetFile(ruta).schema.names
-    financiacion = {k: primera(nombres, *v) for k, v in COLUMNAS_FINANCIACION.items()}
-    renombrar = {  # nombre canónico -> columna de cada edición
-        'CERT': primera(nombres, 'PROPCERT', 'PROATCE'),
-        'ORDENADORES': primera(nombres, 'RATCMP1', 'RATCMP15'),
-        'AUTONOMIA': primera(nombres, 'RESPRES', 'SRESPRES'),
-        'MASTER': primera(nombres, 'PROPAT7'),
-    }
-    columnas_a_leer = ['CNT', 'CNTSCHID', 'W_SCHGRNRABWT', 'STRATIO', 'CLSIZE', 'SCHSIZE', 'SCHLTYPE', 'EDUSHORT', 'STAFFSHORT']
-    columnas_a_leer = [columna for columna in columnas_a_leer if columna in nombres] + [columna for columna in {**financiacion, **renombrar}.values() if columna]
-    colegios = pd.read_parquet(ruta, columns=list(dict.fromkeys(columnas_a_leer)))
-    colegios = colegios.rename(columns={v: k for k, v in renombrar.items() if v})
-    for columna in ('CERT', 'MASTER'):   # proporciones (0-1) -> %
-        if columna in colegios:
-            colegios[columna] = 100 * colegios[columna]
-    colegios = colegios.merge(escs_de_centros(ruta_raw_base, año), on=['CNT', 'CNTSCHID'], how='left')
-    colegios['_centro_publico_pct'] = 100 * (colegios['SCHLTYPE'] == 3).where(colegios['SCHLTYPE'].notna()).astype(float)
+    # Recursos de cada centro con nombres comunes a todas las ediciones (`leer_recursos_centros`, src/pisa_pipeline.py)
+    colegios = leer_recursos_centros(ruta_raw_base, año).merge(escs_de_centros(ruta_raw_base, año), on=['CNT', 'CNTSCHID'], how='left')
+    colegios['_centro_publico_pct'] = 100 * colegios['centro_publico']
 
     # Media de cada variable por país, con el peso del centro (las que la edición no tiene quedan NaN)
-    origen_variables = {'pisa_alumnos_por_profesor': 'STRATIO', 'pisa_tamaño_clase': 'CLSIZE', 'pisa_tamaño_centro': 'SCHSIZE',
-                        'pisa_centros_publicos_pct': '_centro_publico_pct', **financiacion,
-                        'pisa_profesores_certificados_pct': 'CERT', 'pisa_profesores_master_pct': 'MASTER',
-                        'pisa_ordenadores_por_alumno': 'ORDENADORES', 'pisa_autonomia_recursos': 'AUTONOMIA',
-                        'pisa_escasez_material_educativo': 'EDUSHORT', 'pisa_escasez_personal': 'STAFFSHORT'}
-    origen_brechas = {'pisa_brecha_alumnos_por_profesor': 'STRATIO', 'pisa_brecha_tamaño_clase': 'CLSIZE', 'pisa_brecha_profesorado_certificado': 'CERT',
-                      'pisa_brecha_escasez_material': 'EDUSHORT', 'pisa_brecha_escasez_personal': 'STAFFSHORT'}
+    origen_variables = {'pisa_alumnos_por_profesor': 'alumnos_por_profesor', 'pisa_tamaño_clase': 'tamaño_clase', 'pisa_tamaño_centro': 'tamaño_centro',
+                        'pisa_centros_publicos_pct': '_centro_publico_pct',
+                        'pisa_financiacion_centro_gobierno_pct': 'financiacion_gobierno_pct', 'pisa_financiacion_centro_cuotas_pct': 'financiacion_cuotas_pct',
+                        'pisa_financiacion_centro_donaciones_pct': 'financiacion_donaciones_pct', 'pisa_financiacion_centro_otras_pct': 'financiacion_otras_pct',
+                        'pisa_profesores_certificados_pct': 'profesores_certificados_pct', 'pisa_profesores_master_pct': 'profesores_master_pct',
+                        'pisa_ordenadores_por_alumno': 'ordenadores_por_alumno', 'pisa_autonomia_recursos': 'autonomia_recursos',
+                        'pisa_escasez_material_educativo': 'escasez_material_educativo', 'pisa_escasez_personal': 'escasez_personal'}
+    origen_brechas = {'pisa_brecha_alumnos_por_profesor': 'alumnos_por_profesor', 'pisa_brecha_tamaño_clase': 'tamaño_clase',
+                      'pisa_brecha_profesorado_certificado': 'profesores_certificados_pct',
+                      'pisa_brecha_escasez_material': 'escasez_material_educativo', 'pisa_brecha_escasez_personal': 'escasez_personal'}
 
     def media_por_pais(centros, origenes):
         disponibles = {nuevo: origen for nuevo, origen in origenes.items() if origen in centros.columns}
@@ -375,6 +351,22 @@ def serie_anual_presupuesto(ruta_externos: str, inicio: int = 2000, fin: int = 2
     serie_larga = pd.DataFrame({nombre_columna: serie_nivel.loc[inicio:fin].stack(future_stack=True) for nombre_columna, serie_nivel in series.items()})
     serie_larga = serie_larga.rename_axis(['año', 'pais']).reset_index()
     return serie_larga.sort_values(['pais', 'año']).reset_index(drop=True)[['pais', 'año'] + list(series)]
+
+
+def rellenar_con_serie_anual(tabla: pd.DataFrame, serie_larga: pd.DataFrame, variables: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Rellena los huecos de `variables` en una tabla país-edición (`pais`, `edicion`) con la serie anual
+    (`serie_anual_presupuesto`: `pais`, `año`) interpolada solo entre años con dato (`interpolada`: nunca
+    extrapola). Devuelve la tabla rellenada y los valores añadidos (`pais`, `edicion`, `variable`, `valor`)."""
+    tabla = tabla.copy()
+    rellenos = []
+    for variable in variables:
+        anual = interpolada(serie_larga.pivot(index='año', columns='pais', values=variable))
+        faltan = tabla[variable].isna()
+        claves = list(zip(tabla.loc[faltan, 'pais'], tabla.loc[faltan, 'edicion']))
+        valores = [anual.loc[edicion, pais] if edicion in anual.index and pais in anual.columns else np.nan for pais, edicion in claves]
+        tabla.loc[faltan, variable] = valores
+        rellenos += [{'pais': pais, 'edicion': edicion, 'variable': variable, 'valor': valor} for (pais, edicion), valor in zip(claves, valores) if pd.notna(valor)]
+    return tabla, pd.DataFrame(rellenos, columns=['pais', 'edicion', 'variable', 'valor'])
 
 
 def construir_tabla(ruta_raw_base: str, ruta_externos: str, ediciones: list[int] | None = None) -> pd.DataFrame:
