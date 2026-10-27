@@ -12,7 +12,8 @@ Flujo (ver `notebooks/fase_1_data_ingestion_eda/00_pipeline_multiedicion_PISA.ip
     2. `validar_tablas` y `generar_diccionario_columnas`: control de calidad y
        documentación de las tablas.
     3. `rutas_datos_anuales`: rutas de los parquets de una edición; `leer_vista_estudiantes` /
-       `leer_vista_colegios`: leen solo las columnas curadas, para el EDA.
+       `leer_vista_colegios`: leen solo las columnas curadas, para el EDA; `leer_recursos_centros`:
+       recursos de cada centro con nombres comunes a todas las ediciones.
 
 Las estadísticas sobre las tablas maestras (nulos, medias ponderadas por país, estrato o
 centro y reparto de la varianza) están en `pisa_estadisticas.py`.
@@ -705,3 +706,48 @@ def leer_vista_colegios(ruta_parquet: str) -> pd.DataFrame:
     """Como `leer_vista_estudiantes`, para la tabla de centros (ids, pesos y `COLUMNAS_CONTEXTO_COLEGIO`)."""
     nombres = pq.ParquetFile(ruta_parquet).schema.names
     return pd.read_parquet(ruta_parquet, columns=_columnas_vista_colegios(set(nombres)))
+
+
+# Recursos del centro con nombres comunes a todas las ediciones: nombre -> columnas candidatas
+# (se usa la primera que exista en la edición; 2012 y 2022 nombran distinto algunas)
+VARIABLES_RECURSOS_CENTRO = {
+    'alumnos_por_profesor': ('STRATIO',),
+    'tamaño_clase': ('CLSIZE',),
+    'tamaño_centro': ('SCHSIZE',),
+    'financiacion_gobierno_pct': ('SC02Q01', 'SC016Q01TA'),
+    'financiacion_cuotas_pct': ('SC02Q02', 'SC016Q02TA'),
+    'financiacion_donaciones_pct': ('SC02Q03', 'SC016Q03TA'),
+    'financiacion_otras_pct': ('SC02Q04', 'SC016Q04TA'),
+    'profesores_certificados_pct': ('PROPCERT', 'PROATCE'),   # proporción (0-1) en el fichero: se pasa a %
+    'profesores_master_pct': ('PROPAT7',),                    # proporción (0-1) en el fichero: se pasa a %; solo 2022
+    'ordenadores_por_alumno': ('RATCMP1', 'RATCMP15'),
+    'autonomia_recursos': ('RESPRES', 'SRESPRES'),
+    'escasez_material_educativo': ('EDUSHORT',),
+    'escasez_personal': ('STAFFSHORT',),
+}
+_RECURSOS_EN_PROPORCION = ('profesores_certificados_pct', 'profesores_master_pct')
+
+
+def primera(nombres, *candidatas: str) -> str | None:
+    """Primera de `candidatas` que exista en `nombres` (las ediciones nombran distinto)."""
+    return next((candidata for candidata in candidatas if candidata in nombres), None)
+
+
+def leer_recursos_centros(ruta_raw_base: str, año: int) -> pd.DataFrame:
+    """Recursos de cada centro de una edición con nombres comunes a todas las ediciones
+    (`VARIABLES_RECURSOS_CENTRO`; NaN en las que la edición no tiene). Una fila por centro con
+    `CNT`, `CNTSCHID`, el peso del centro `W_SCHGRNRABWT` y `centro_publico` (1 si `SCHLTYPE` = 3,
+    0 si es privado, NaN sin dato). Las proporciones de profesorado se pasan a %."""
+    _, ruta = rutas_datos_anuales(ruta_raw_base, año)
+    nombres = pq.ParquetFile(ruta).schema.names
+    origen = {nombre: primera(nombres, *candidatas) for nombre, candidatas in VARIABLES_RECURSOS_CENTRO.items()}
+    columnas = ['CNT', 'CNTSCHID', 'W_SCHGRNRABWT', 'SCHLTYPE'] + [columna for columna in origen.values() if columna]
+    colegios = pd.read_parquet(ruta, columns=list(dict.fromkeys(columnas)))
+    recursos = colegios[['CNT', 'CNTSCHID', 'W_SCHGRNRABWT']].copy()
+    recursos['centro_publico'] = (colegios['SCHLTYPE'] == 3).where(colegios['SCHLTYPE'].notna()).astype(float)
+    for nombre, columna in origen.items():
+        if columna is None:
+            recursos[nombre] = np.nan
+        else:
+            recursos[nombre] = 100 * colegios[columna] if nombre in _RECURSOS_EN_PROPORCION else colegios[columna]
+    return recursos
