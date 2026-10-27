@@ -151,9 +151,9 @@ def guardar_pickle(ruta_archivo: str, *objetos: Any) -> None:
             # Si es un solo objeto, lo guarda directo; si son varios, los guarda como tupla
             pickle.dump(objetos[0] if len(objetos) == 1 else objetos, f)
             
-        print(f"✅ {len(objetos)} objeto(s) guardado(s) con éxito en: {ruta_archivo}")
+        print(f"{len(objetos)} objeto(s) guardado(s) con éxito en: {ruta_archivo}")
     except Exception as e:
-        print(f"❌ Error al guardar en Pickle: {e}")
+        print(f"Error al guardar en Pickle: {e}")
 
 def cargar_pickle(ruta_archivo: str) -> Any:
     """
@@ -163,7 +163,7 @@ def cargar_pickle(ruta_archivo: str) -> Any:
         mi_set, mi_dict = cargar_pickle('datos.pkl')
     """
     if not os.path.exists(ruta_archivo):
-        raise FileNotFoundError(f"❌ El archivo especificado no existe: {ruta_archivo}")
+        raise FileNotFoundError(f"El archivo especificado no existe: {ruta_archivo}")
         
     try:
         with open(ruta_archivo, 'rb') as f:
@@ -171,7 +171,7 @@ def cargar_pickle(ruta_archivo: str) -> Any:
         print(f" Objetos cargados correctamente desde: {ruta_archivo}")
         return datos
     except Exception as e:
-        print(f"❌ Error al cargar desde Pickle: {e}")
+        print(f"Error al cargar desde Pickle: {e}")
         return None
     
 def establecer_semilla(seed: int = 42):
@@ -187,4 +187,4 @@ def establecer_semilla(seed: int = 42):
     # 3. NumPy
     np.random.seed(seed)
     
-    print(f"✅ Semillas del proyecto establecidas con éxito (seed={seed}).")
+    print(f"Semillas del proyecto establecidas con éxito (seed={seed}).")

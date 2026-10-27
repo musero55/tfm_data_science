@@ -10,9 +10,14 @@ Estadísticas sobre las tablas maestras de PISA (`data/raw/datos_anuales/`, ver 
       de un dominio.
     * `reparto_varianza`: % de la varianza de una variable entre niveles anidados (por ejemplo,
       entre países, entre centros del país y entre alumnos del centro).
+    * `centrar_en_grupos` / `regresion_dentro_de_grupos`: variables centradas en la media de su grupo
+      (por ejemplo, su país-edición) y regresión lineal con esa variación dentro de los grupos.
+    * `estimar_con_pv`: cualquier estadístico de la nota calculado con cada valor plausible y promediado.
 """
 
 from __future__ import annotations
+
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -138,3 +143,61 @@ def reparto_varianza(
         media_nivel_anterior = media_nivel
     reparto[nombre_residuo] = 100 * (pesos * (valores - media_nivel_anterior) ** 2).sum() / suma_total
     return pd.Series(reparto)
+
+
+# 4. Variación dentro de grupos
+
+def centrar_en_grupos(
+    datos: pd.DataFrame,
+    columnas: list[str],
+    claves: list[str],
+    peso_col: str | None = None,
+) -> pd.DataFrame:
+    """Cada columna de `columnas` menos su media dentro de su grupo de `claves` (ponderada por `peso_col`;
+    sin él, cada fila pesa igual). Queda solo la variación dentro de cada grupo; los vacíos siguen vacíos."""
+    pesos = datos[peso_col] if peso_col else pd.Series(1.0, index=datos.index)
+    grupos = [datos[clave] for clave in claves]
+    centradas = {}
+    for columna in columnas:
+        peso_con_dato = pesos.where(datos[columna].notna(), 0)
+        suma = (datos[columna].fillna(0) * peso_con_dato).groupby(grupos).transform('sum')
+        centradas[columna] = datos[columna] - suma / peso_con_dato.groupby(grupos).transform('sum')
+    return pd.DataFrame(centradas, index=datos.index)
+
+
+def regresion_dentro_de_grupos(
+    datos: pd.DataFrame,
+    columna_y: str,
+    columnas_x: list[str],
+    claves: list[str],
+    peso_col: str | None = None,
+) -> pd.DataFrame:
+    """Regresión lineal (mínimos cuadrados, ponderados por `peso_col`) de `columna_y` sobre `columnas_x` con
+    la variación dentro de los grupos de `claves`: todas las columnas se centran en la media de su grupo
+    (efectos fijos de grupo). Usa las filas con todas las columnas. Devuelve, por variable, el coeficiente,
+    el cambio de `columna_y` por una desviación típica de la variable dentro del grupo y el número de filas.
+    Es descriptiva: no da errores estándar."""
+    completos = datos.dropna(subset=[columna_y] + columnas_x)
+    centradas = centrar_en_grupos(completos, [columna_y] + columnas_x, claves, peso_col)
+    pesos = completos[peso_col].to_numpy() if peso_col else np.ones(len(completos))
+    raiz_pesos = np.sqrt(pesos)
+    matriz = centradas[columnas_x].to_numpy()
+    coeficientes, *_ = np.linalg.lstsq(matriz * raiz_pesos[:, None], centradas[columna_y].to_numpy() * raiz_pesos, rcond=None)
+    desviaciones = np.sqrt(np.average(matriz ** 2, axis=0, weights=pesos))
+    return pd.DataFrame({'coeficiente': coeficientes, 'por desviación típica': coeficientes * desviaciones, 'filas': len(completos)},
+                        index=columnas_x)
+
+
+# 5. Valores plausibles
+
+def estimar_con_pv(datos: pd.DataFrame, dominio: str, estadistico: Callable[[pd.DataFrame, str], object]):
+    """Estadístico de la nota de `dominio` (MATH, READ o SCIE) calculado con cada valor plausible por separado
+    y promediado: es la estimación puntual de las reglas de Rubin (sin su error estándar). `estadistico(datos,
+    columna_nota)` devuelve un número, una Series o un DataFrame. Hace falta en varianzas, correlaciones y
+    regresiones, porque promediar los valores plausibles de cada alumno antes las rebaja; en las medias da lo
+    mismo. Usa los valores plausibles con dato en todas las filas: si `datos` junta 2012 (5) con otras
+    ediciones (10), los cinco primeros."""
+    columnas = [columna for columna in columnas_pv(dominio) if columna in datos.columns and datos[columna].notna().all()]
+    if not columnas:
+        raise ValueError(f'Los datos no tienen valores plausibles de {dominio} completos')
+    return sum(estadistico(datos, columna) for columna in columnas) / len(columnas)
