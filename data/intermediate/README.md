@@ -1,59 +1,16 @@
+# Tablas intermedias
 
-# Informacion de las tablas contenidas en la carpeta intermediate #
+Tablas que guardan los notebooks de `notebooks/fase_1_data_ingestion_eda/` y que lee el análisis, casi todas a través de `src/tabla_alumno.py` (`tabla_por_alumno`). Las tablas maestras por edición no están aquí, sino en `data/raw/datos_anuales/` (las genera `00_pipeline_multiedicion_PISA`).
 
-## `pisa_submuestra_estudiantes.parquet`
-    
-    Tabla que contiene la submuestra creada a partir de los datos raw de `CY08MSP_STU_QQQ.FORMAT`.
-    Contiene todos los indices agregados contenidos en el archivo STU_QQQ pero de la submuestra realizada del 20% de los datos.
+Las tablas del bloque exploratorio y del primer modelo por estrato están en `anexo/`, y las que ya no usa nadie, en `obsoleto/`.
 
-    * Numero de alumnos originales: 613744
-    * Numero Alumnos seleccionados: 146500
-    * Porcentaje de la muestra sobre el total: 23.87%
-
-    Contiene los siguientes indices:
-
-| Categoría | Variables |
-|---|---|
-| IDs y pesos base | `CNT`, `STRATUM`, `CNTSCHID`, `CNTSTUID`, `W_FSTUWT` |
-| Contexto socioeconómico y familiar | `ESCS`, `HISEI`, `PAREDINT`, `HOMEPOS`, `WEALTH`, `CULTPOSS`, `HEDRES`, `ICTRES` |
-| Actitud y psicología | `ANXMAT`, `MATHEFF`, `MATHINT`, `MATHBEH` |
-| Clima escolar (alumno) | `BELONG`, `BULLY`, `DISCLIMA`, `TEACHSUP` |
-    
-
-
-
-## `pisa_sub_dataframe_global_nulos.parquet`
-    
-    Tabla que contiene los datos unidos de *pisa_submuestra_estudiantes.parquet* y los indces de los datos raw de ¨CY08MSP_TCH_QQQ.FORMAT¨, solamente contiene
-    los datos de los colegios elegidos en la submuestra anterior. La tabla presenta nulos debido a paises de los que no existe información de dichos indices, por lo que la información no ha sido tratada 
-
-    Contiene los indices de pisa_submuestra_estudiantes.parquet + los indices especificos del colegio :
-
-| Categoría | Variables |
-|---|---|
-| IDs y pesos base | `CNT`, `STRATUM`, `CNTSCHID` |
-| Cuestionario de centro | `STRATIO`, `PROPMATH`, `SCHLCLI`, `EDUSHORT`, `STAFFSHORT` |
-
-
-# `pisa22_submuestra_global_limpio.parquet`
-
-    Tabla que parte del pisa_sub_dataframe_global_nulos.parquet de el que se ha realziado el EDA . Aspectos importantes
-
-* ⚠️ Se ha eliminado la columna `ICTRES` por faltar datos en 27 de los 81 paises registrados
-* ⚠️ La imputación de nulos es *multivariante* resolviendo el valor del nulo mediante la observacion deotras variables presentes que tengan correlacion
-
-# `pisa22_submuestra_paises.parquet`
-
-    Muestra de cada pais los indices derivados (que han sido ponderados para ajustarse a al submuestra).
-    Es decir, cada fila es un único pais y cada columna un índice derivado
-
-    Parte de la tabla pisa22_submuestra_global_limpio.parquet, pero se han eliminado las variables identificativas de estratio y de colegio, así como las ponderaciones de los alumnos y de senado ajustadas.
-    
-    Como se ha indicado al principio, cada indice derivado presente en la tabla es el resultado de hacer la media ponderada (ajustada a la submuestra) del indice que se presentaba para cada colegio:
-    
-        indice : np.average(x[indice],weights=x['W_FSTUWT_adj']) 
-
-| Categoría | Variables |
-|---|---|
-| Identificador | `CNT` |
-| Índices | `PAREDINT`, `HISEI`, `HOMEPOS`, `ESCS`, `BELONG`, `TEACHSUP`, `MATHEFF`, `ANXMAT`, `STRATIO`, `PROPMATH`, `STAFFSHORT`, `EDUSHORT` |
+| Carpeta o fichero | La genera | Contenido | La lee |
+|---|---|---|---|
+| `diccionario_columnas.csv` | `00_pipeline_multiedicion_PISA` | Columnas de las tablas maestras de cada edición y su descripción | `01_EDA_recursos_alumno`, `01_EDA_recursos_centro` |
+| `estratos_fijos/pisa{edición}_estratos_fijos.parquet` | `00_Pipeline_generacion_estratos` | Perfil de cada centro (titularidad, ubicación y tamaño) | `tabla_alumno`, `01_EDA_indice_de_compromiso_competencia`, `01_EDA_variables_modelo` |
+| `medias_asignaturas_anual/pisa_medias_asignaturas_{centro,pais}_anual.parquet` | `01_EDA_notas_asignatura` | Nota media de matemáticas, lectura y ciencias por centro y por país, con todos los valores plausibles | `01_EDA_equidad`, `01_EDA_indice_de_compromiso_competencia` |
+| `escs_anual/pisa_escs_{centro,pais}_anual.parquet` | `01_EDA_equidad` | `ESCS` medio por centro y por país | `tabla_alumno` (composición social del centro) |
+| `recursos_anual/pisa_recursos_{centro,pais}_anual.parquet` | `01_EDA_equidad` | Recursos del centro (profesorado, ordenadores, escasez...) por centro y por país | `src/recursos_centro.py`, que calcula los índices de dotación y escasez |
+| `recursos_alumno_anual/pisa_recursos_alumno_anual.parquet` | `01_EDA_recursos_alumno` | Subíndices de recursos del hogar por alumno, entre ellos `recursos_estudio` | `tabla_alumno` |
+| `compromiso_competencia/pisa{edición}_compromiso_competencia.parquet` | `01_EDA_indice_de_compromiso_competencia` | Índice de compromiso y competencia por alumno, con su tercil de deberes y sus componentes, en el panel común (12 países, cuatro ediciones) | `tabla_alumno` (`panel='común'`) |
+| `compromiso_competencia_panel_ampliado/pisa{edición}_compromiso_competencia.parquet` | `01_EDA_indice_de_compromiso_competencia` (sección 5.7.6) | El mismo índice calculado con los 25 países del panel ampliado, sin 2018 | `tabla_alumno` (`panel='ampliado'`) |

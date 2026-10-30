@@ -29,6 +29,8 @@
 *   `data/processed/`: Datasets finales utilizados para el modelado
 *   `notebooks/`: Notebooks particulares, separados en fases de trabajo para que sea modular.
 *   `src/`: Funciones y lógica común que podemos reutilizar todos (ej. cálculo de errores de imputación y calculo de medias con PV values) para no duplicar código de forma innecesaria.
+*   `anexo/`: Trabajo que ya no forma parte de la línea principal pero se conserva (bloque exploratorio de 33 países y primer modelo por estrato), cada carpeta con sus notebooks, datos y figuras. Ver `anexo/README.md`.
+*   `obsoleto/`: Ficheros que ya no usa nadie, apartados para revisarlos antes de borrarlos. Ver `obsoleto/README.md`.
 
 ---
 
