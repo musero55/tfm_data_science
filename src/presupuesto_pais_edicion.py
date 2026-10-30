@@ -10,7 +10,7 @@ y las variables externas de gasto, renta y personal de `data/raw/externos/`. La 
     * `construir_tabla`: la tabla completa; `dividir_tabla` separa las variables económicas
       del contexto educativo (segregación, recursos de los centros, profesorado...).
     * `SELECCION` / `serie_anual_presupuesto`: las variables básicas que se guardan en
-      `data/intermediate/presupuesto_pais_edicion.parquet` y la serie anual 2000-2024;
+      `anexo/exploratorio_33_paises/datos/presupuesto_pais_edicion.parquet` y la serie anual 2000-2024;
       `rellenar_con_serie_anual` rellena huecos de la tabla con la serie interpolada.
     * `residuo_ols` e `inventario_variables`: análisis de `01_EDA_presupuestos.ipynb` (los perfiles de gasto
       se agrupan con `perfiles_kmeans.py`).
