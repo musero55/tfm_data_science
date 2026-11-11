@@ -1,5 +1,13 @@
 # Comprobaciones de robustez: qué resultados aguantan
 
+## Conclusión sobre el cambio de 2012 a 2022
+- En el conjunto de los 12 países, la relación del compromiso y de los recursos con la nota apenas cambia de 2012 a
+  2022 y es parecida en todos los perfiles de centro.
+- Los cambios que aparecen a primera vista se deben a un país o a un cambio en la pregunta:
+  - la subida del coeficiente del compromiso viene solo de los deberes, cuya pregunta cambia en cada edición;
+  - el salto del coeficiente de los recursos en el privado urbano grande en 2022 depende solo de Australia.
+- El detalle de cada uno está en «Resultados que hay que contar con cautela».
+
 ## Qué se hizo
 - El modelo de regresión se repitió cambiando una decisión cada vez, para ver si los resultados dependen de ella:
   - cómo se mide el compromiso (sus tres componentes por separado, o solo absentismo e impuntualidad);
@@ -52,7 +60,8 @@
   quitar Australia, Reino Unido, Hungría, Italia, Eslovaquia o Eslovenia, con el nivel socioeconómico del centro o
   con el efecto fijo país × perfil (1,3 puntos, p = 0,052).
   Además, viene del componente de deberes, el que peor se compara entre ediciones (ver la nota de compromiso).
-  Se puede decir que la relación del compromiso con la nota se mantiene o sube algo, no que se haya reforzado.
+  Por eso la conclusión es que la relación del compromiso con la nota apenas cambia: no se puede decir que haya
+  aumentado ni que se haya reforzado, ni llamar significativa a esa subida.
 - **El privado urbano grande en 2022 depende de Australia.** Esto no es su diferencia de nota de +10 frente al
   público urbano mediano: esa diferencia no se comprobó quitando países y no se deduce de lo que sigue. Lo frágil es el coeficiente de los recursos de estudio en ese perfil. Con los 12 países, ese coeficiente sube unos 14 puntos de 2012 a 2022 (de 3,4 a 17,6), y por esa subida el
   coeficiente de los recursos difiere entre perfiles en 2022. Aguanta las comprobaciones por tramos y con otros
@@ -81,6 +90,8 @@
 
 ## Cómo usar esta nota
 - Si el usuario pregunta si un resultado es fiable, contestar con lo que aguanta y lo que no, en lenguaje sencillo.
+- Si pregunta si la relación ha cambiado de 2012 a 2022, empezar por la conclusión del principio de esta nota y
+  explicar después de dónde salen los cambios aparentes.
 - No presentar como hallazgo firme la subida del compromiso ni la del privado urbano grande.
 - Si preguntan por qué es frágil «el resultado del privado urbano grande», empezar aclarando que lo frágil es la
   subida del coeficiente de sus recursos (de 3,4 a 17,6 puntos por desviación típica), no los +10 puntos de nota que

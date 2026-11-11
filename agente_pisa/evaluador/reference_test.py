@@ -173,12 +173,18 @@ CASOS_MEMORIA = [
                 "+1,5 de 2012 a 2022 (p = 0,029)",
                 "Recursos de estudio, por desviación típica: 5,44 en 2012, 5,62 en 2015, 4,93 en 2018 y 5,90 en "
                 "2022; el cambio (+0,46) no se distingue de cero (p = 0,514)",
+                "En recursos, el único salto es la subida de su coeficiente en el privado urbano grande (unos 14 "
+                "puntos por desviación típica de 2012 a 2022), que depende solo de Australia; en el compromiso no hay "
+                "diferencias entre perfiles",
                 "La subida del compromiso viene de los deberes (de −0,4 a +5,7 puntos) y deja de distinguirse de "
                 "cero al quitar algunos países; faltar a clase y llegar tarde pesan igual en toda la década",
             ],
             "conclusiones_esperadas": [
+                "Empieza por la conclusión: en el conjunto de los 12 países, la relación del compromiso y de los "
+                "recursos con la nota apenas cambia de 2012 a 2022",
+                "No presenta la subida del compromiso como un cambio significativo, un aumento ni un refuerzo: la "
+                "atribuye a los deberes, cuya pregunta cambia entre ediciones, y dice que depende de algunos países",
                 "La relación de los recursos con la nota es estable en la década",
-                "La del compromiso se mantiene o sube algo; no la presenta como un refuerzo firme",
                 "Avisa de que en 2018 los deberes vienen de un cuestionario opcional (64 % de cobertura, 28 % en "
                 "Reino Unido)",
             ],

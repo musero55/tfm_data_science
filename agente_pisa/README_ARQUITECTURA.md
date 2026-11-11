@@ -82,7 +82,8 @@ agente.py  (LangGraph: asistente <-> herramientas, con system_prompt.md)
 
 **Cautelas dentro de la salida de las herramientas.** Groq salta a menudo al modelo de respaldo (`gpt-oss-20b`), que a veces se salta las notas de metodología y lee mal tablas largas. Por eso las cautelas importantes van en el propio JSON:
 - el aviso de 2018 y el de perfiles con menos de 30 centros;
-- los dos resultados que no aguantan las comprobaciones de robustez: el privado urbano grande de 2022, que depende de Australia, y la subida del compromiso de 2012 a 2022;
+- la conclusión del cambio de 2012 a 2022, la primera de la salida cuando se piden el compromiso o los recursos con 2012 y 2022: en el conjunto de los 12 países la relación apenas cambia y es parecida en todos los perfiles; lo que cambia a primera vista se debe a un país o a un cambio en la pregunta. La subida del compromiso, uno de los dos resultados que no aguantan las comprobaciones de robustez, lleva además su lectura junto al p del cambio, porque suelto el modelo lo contaba como un aumento;
+- el otro resultado frágil: el privado urbano grande de 2022, que depende de Australia;
 - el aviso de que el XGBoost no ve patrones de grupos pequeños;
 - conclusiones ya calculadas, como qué variables difieren más de 2 puntos entre grupos.
 

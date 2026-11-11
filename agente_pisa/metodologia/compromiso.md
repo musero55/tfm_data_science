@@ -97,7 +97,9 @@ más alto indica más compromiso.
   asocia a más nota que hacer bien los deberes y faltar), y su coeficiente es un promedio de las tres conductas.
   Para una conducta concreta hay que usar sus cifras por separado (ver la cautela siguiente).
 
-## Cautela: la subida de su relación con la nota viene de los deberes
+## Cautela: la subida aparente de su relación con la nota viene de los deberes
+- Conclusión: en el conjunto de los 12 países, la relación del compromiso con la nota apenas cambia de 2012 a 2022.
+  La subida que aparece a primera vista se debe al cambio en la pregunta de deberes.
 - El coeficiente del índice sube algo de 2012 a 2022: de 10,6 a 12,1 puntos de matemáticas por desviación típica
   (+1,5, p = 0,029). Al repetir el modelo con los tres componentes por separado:
   - **Absentismo:** haber faltado se asocia a unos 17 o 18 puntos menos, igual en 2012 y en 2022 (sin cambio

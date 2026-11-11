@@ -395,15 +395,28 @@ RANGO = {"Indice_Compromiso_Competencia": (-2.1, 1.54), "recursos_estudio": (0, 
          "dotacion_centro": (-4.32, 3.98), "sexo_femenino": (0, 1), "inmigrante": (0, 1)}
 # Resultados que no aguantan las comprobaciones de robustez (metodologia/robustez.md): se avisan en la propia salida
 # cuando la consulta incluye las ediciones indicadas. (variable, estrato) -> (ediciones, aviso)
+# La subida del compromiso de 2012 a 2022, el otro resultado frágil, va en CONCLUSION_CAMBIO.
 AVISOS_FRAGILES = {
     ("recursos_estudio", "PRI_URB_MACRO"): ({2022}, "Resultado frágil: la subida de 2012 a 2022 del coeficiente de los "
         "recursos en el privado urbano grande (unos 14 puntos por desviación típica) depende solo de Australia: sin "
         "ella la subida baja a 6,8 y no se distingue de cero; el coeficiente no se anula. No es su diferencia de nota "
         "(+10) (nota de robustez)"),
-    ("Indice_Compromiso_Competencia", "todos"): ({2012, 2022}, "Resultado frágil: la subida del coeficiente del índice "
-        "de 2012 a 2022 viene de los deberes y deja de distinguirse de cero al quitar algunos países (nota de "
-        "robustez). No afecta a las cifras de faltar a clase ni de llegar tarde, que son estables"),
 }
+# Conclusión del estudio sobre el cambio de 2012 a 2022 (metodologia/robustez.md). Va la primera en la salida para que
+# la respuesta empiece por ella: con la cautela al final, el modelo abría con «ha aumentado (p = 0,029)»
+CONCLUSION_CAMBIO = ("En el conjunto de los 12 países, la relación del compromiso y de los recursos con la nota apenas "
+                     "cambia de 2012 a 2022 y es parecida en todos los perfiles de centro. Los cambios que aparecen a "
+                     "primera vista se deben a un país o a un cambio en la pregunta")
+EXPLICACION_CAMBIO = {
+    "Indice_Compromiso_Competencia": "La subida del índice (+1,5) es frágil, no un cambio real: viene solo de los "
+        "deberes, cuya pregunta cambia en cada edición, y deja de distinguirse de cero al quitar algunos países. Faltar "
+        "a clase y llegar tarde pesan igual en toda la década. No llamarla significativa ni decir que ha aumentado",
+    "recursos_estudio": "Su cambio no se distingue de cero. El único salto, la subida de su coeficiente en el privado "
+        "urbano grande (unos 14 puntos por desviación típica de 2012 a 2022), depende solo de Australia",
+}
+LECTURA_CAMBIO_INDICE = "aparente y frágil: no contarlo como aumento ni como cambio significativo (ver 'conclusion_2012_2022')"
+LECTURA_CAMBIO_CONDUCTA = {"deberes_tiempo_intermedio": "la pregunta de deberes cambia en cada edición: no es un "
+                                                        "cambio real de la relación"}
 AVISOS_SIMULACION = {
     "recursos_estudio": "Cuenta lineal. Casi todos los alumnos tienen ya 5 o 6 de los seis recursos (ver "
                         "'recursos_del_alumnado'): «el doble» o «muchos más» solo es posible para quien tiene pocos. "
@@ -513,9 +526,14 @@ NOTA_CONDUCTAS = ("Puntos de nota de cada conducta (no por desviación típica),
 
 def _conductas() -> dict:
     """Puntos de nota de cada conducta en 2012 y 2022 (modelo con las tres por separado) y su cambio."""
+    def cambio(f) -> dict:
+        datos = {"dif": _r(f.cambio), "p": _p(f.p_cambio)}
+        if f.conducta in LECTURA_CAMBIO_CONDUCTA:
+            datos["lectura"] = LECTURA_CAMBIO_CONDUCTA[f.conducta]
+        return datos
+
     return {NOMBRES_CONDUCTAS[f.conducta]: {"que_compara": f.descripcion, "puntos_2012": _r(f.coef_2012),
-                                            "puntos_2022": _r(f.coef_2022),
-                                            "cambio_2012_2022": {"dif": _r(f.cambio), "p": _p(f.p_cambio)}}
+                                            "puntos_2022": _r(f.coef_2022), "cambio_2012_2022": cambio(f)}
             for f in cargar_conductas().itertuples()}
 
 
@@ -583,6 +601,8 @@ def get_regression_weights(variable: str = "", year: Union[int, str] = 2022, tip
             if cambio is not None:
                 avisos.append("La simulación no se aplica a la diferencia entre perfiles")
         else:
+            if columna in EXPLICACION_CAMBIO and {2012, 2022} <= set(years):
+                salida["conclusion_2012_2022"] = f"{CONCLUSION_CAMBIO}. {EXPLICACION_CAMBIO[columna]}"
             salida["variable"] = NOMBRES_REGRESION[columna]
             salida["unidad"] = UNIDADES_REGRESION[columna]
             minimo, maximo = RANGO[columna]
@@ -618,6 +638,11 @@ def get_regression_weights(variable: str = "", year: Union[int, str] = 2022, tip
             if perfiles is not None and columna not in VARIABLES_POR_PERFIL:
                 avisos.append(f"{NOMBRES_REGRESION[columna]} tiene un solo coeficiente para todos los perfiles: "
                               "solo el compromiso y los recursos tienen uno por perfil")
+            if columna == "Indice_Compromiso_Competencia":
+                # La lectura, junto al p del cambio del índice: suelto, el modelo lo contaba como un aumento
+                for bloque in (salida.get("coeficiente_comun"), salida.get("para_comparar_todos_los_perfiles")):
+                    if bloque and "cambio_2012_2022" in bloque:
+                        bloque["cambio_2012_2022"]["lectura"] = LECTURA_CAMBIO_INDICE
 
         avisos += [aviso for (var, estrato), (ediciones, aviso) in AVISOS_FRAGILES.items()
                    if var == columna and estrato in set(filas["estrato"]) and ediciones <= set(years)]

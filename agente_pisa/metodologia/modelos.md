@@ -88,7 +88,9 @@ Hay dos versiones:
 - Recursos de estudio: unos 5 a 6 puntos por cada uno más de los seis, estables de 2012 a 2022 para el conjunto de
   los 12 países; sin diferencias entre perfiles salvo en 2022, por el privado urbano grande, una diferencia que no
   resiste quitar Australia ni el efecto fijo país × perfil (ver la nota de perfiles de centro y la de robustez).
-- La subida del compromiso de 2012 a 2022 (+1,5 puntos) es frágil (ver la nota de robustez).
+- De 2012 a 2022, la relación del compromiso y de los recursos con la nota apenas cambia en el conjunto de los 12
+  países. La subida aparente del compromiso (+1,5 puntos) viene de los deberes, cuya pregunta cambia, y es frágil
+  (ver la nota de robustez).
 - Pesan más algunos controles que las variables de interés: la composición social del centro y los libros en casa.
 
 ## XGBoost y SHAP
